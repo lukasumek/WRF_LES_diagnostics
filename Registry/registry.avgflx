@@ -1,0 +1,165 @@
+state    real   avgflx_rum     ikj     dyn_em      1         X      r       "avgflx_rum"        "hist-time-averaged mu-coupled u"   "Pa m s-1"
+state    real   avgflx_rvm     ikj     dyn_em      1         Y      r        "avgflx_rvm"        "hist-time-averaged mu-coupled v"   "Pa m s-1"
+state    real   avgflx_wwm     ikj     dyn_em      1         Z      r         "avgflx_wwm"   "hist-time-averaged mu-coupled eta-dot"          "Pa s-1"
+state    integer   avgflx_count    -      dyn_em      -         -       r     "avgflx_count"    "Counter for time-averaged mu-coupled velocities"  ""
+state    real  avgflx_cfu1     ikj      misc        1         Z     r         "CFU1"                  "AVERAGE updraft mass flux from GD-scheme"         "kg m-2 s-1"
+state    real  avgflx_cfd1     ikj      misc        1         Z     r         "CFD1"                  "AVERAGE downdraft mass flux from GD-scheme"         "kg m-2 s-1"
+state    real  avgflx_dfu1     ikj      misc        1         -     r         "DFU1"                  "AVERAGE detrainment from updraft from GD-scheme"         "kg m-2 s-1"
+state    real  avgflx_efu1     ikj      misc        1         -     r         "EFU1"                  "AVERAGE entrainment into updraft  from GD-scheme"         "kg m-2 s-1"
+state    real  avgflx_dfd1     ikj      misc        1         -     r         "DFD1"                  "AVERAGE detrainment from downdraft from GD-scheme"         "kg m-2 s-1"
+state    real  avgflx_efd1     ikj      misc        1         -     r         "EFD1"                  "AVERAGE entrainment into downdraft  from GD-scheme"         "kg m-2 s-1"
+state    real  cfu1            ikj      misc        1         Z      -        ""                  "instantaneous updraft mass flux from GD-scheme"         "kg m-2 s-1"
+state    real  cfd1            ikj      misc        1         Z      -        ""                  "instantaneous downdraft mass flux from GD-scheme"         "kg m-2 s-1"
+state    real  dfu1            ikj      misc        1         -      -        ""                  "instantaneous detrainment from updraft from GD-scheme"         "kg m-2 s-1"
+state    real  efu1            ikj      misc        1         -      -        ""                  "instantaneous entrainment into updraft  from GD-scheme"         "kg m-2 s-1"
+state    real  dfd1            ikj      misc        1         -      -        ""                  "instantaneous detrainment from downdraft from GD-scheme"         "kg m-2 s-1"
+state    real  efd1            ikj      misc        1         -      -        ""                  "instantaneous entrainment into downdraft  from GD-scheme"         "kg m-2 s-1"
+rconfig   integer do_avgflx_em            namelist,dynamics     max_domains     0     irh  "do_avgflx_em"     "activate output ofhist-time-averaged mu-coupled winds"   ""
+rconfig   integer do_avgflx_cugd          namelist,dynamics     max_domains     0     irh  "do_avgflx_cugd"   "activate output of hist-time-averaged cugd fluxes"   ""
+# Is the following line really needed?
+package   noavgflxem     do_avgflx_em==0             -             -
+package   avgflxem       do_avgflx_em==1             -             state:avgflx_rum,avgflx_rvm,avgflx_wwm
+# Is the following line really needed?
+package   noavgflxcugd   do_avgflx_cugd==0           -             -
+package   avgflxcugd     do_avgflx_cugd==1           -             state:avgflx_cfu1,avgflx_cfd1,avgflx_dfu1,avgflx_efu1,avgflx_dfd1,avgflx_efd1,cfu1,cfd1,dfu1,efu1,dfd1,efd1
+
+# cLU start
+# output of diagnostics is deactivated by default. Change regeistry setting here or use run-time IO
+
+# history-interval average of potential temperature tendency from parameterizations
+state   real    rt_tendm_rad      ikj     dyn_em          1               -               - "TH_TENDM_RAD"       "hist-interval avg theta-tendency from RAD scheme" "K s-1"
+state   real    rt_tendm_radlw    ikj     dyn_em          1               -               - "TH_TENDM_RADLW"     "hist-interval avg theta-tendency from RAD scheme, longwave" "K s-1"
+state   real    rt_tendm_radsw    ikj     dyn_em          1               -               - "TH_TENDM_RADSW"     "hist-interval avg theta-tendency from RAD scheme, shortwave" "K s-1"
+state   real    rt_tendm_mp       ikj     dyn_em          1               -               - "TH_TENDM_MP"        "hist-interval avg theta-tendency from MP scheme" "K s-1"
+
+# instantaneous horizontal pressure gradient force (PGF) on hoprizontal wind components
+state   real    ru_tend_pgf       ikj     dyn_em          1               X               - "RU_TEND_PGF"        "u PGF tendency" "m s-2"
+state   real    rv_tend_pgf       ikj     dyn_em          1               Y               - "RV_TEND_PGF"        "v PGF tendency" "m s-2"
+# history-interval average of PGF on horizontal wind components
+state   real    rv_tendm_pgf      ikj     dyn_em          1               Y               - "RV_TENDM_PGF"       "hist-interval avg PGF U tendency" "m s-2"
+state   real    ru_tendm_pgf      ikj     dyn_em          1               X               - "RU_TENDM_PGF"       "hist-interval avg PGF V tendency" "m s-2"
+
+# instantaneous and history-interval averaged change of vertical wind by buoyancy
+state   real    rw_tend_buoy      ikj     dyn_em          1               Z               - "RW_TEND_PGBUOY"     "w buoyancy tendency" "m s-2"
+state   real    rw_tendm_buoy     ikj     dyn_em          1               Z               - "RW_TENDM_PGBUOY"    "hist-interval avg W buoyancy tendency" "m s-2"
+
+# instaneous and history-interval averaged change of wind due to coriolis force 
+state   real    ru_tend_cor       ikj     dyn_em          1               X               - "RU_TEND_COR"        "u coriolis tendency" "m s-2"
+state   real    rv_tend_cor       ikj     dyn_em          1               Y               - "RV_TEND_COR"        "v coriolis tendency" "m s-2"
+state   real    rw_tend_cor       ikj     dyn_em          1               Z               - "RW_TEND_COR"        "w coriolis tendency" "m s-2"
+state   real    ru_tendm_cor      ikj     dyn_em          1               X               - "RU_TENDM_COR"       "hist-interval avg U coriolis tendency" "m s-2"
+state   real    rv_tendm_cor      ikj     dyn_em          1               Y               - "RV_TENDM_COR"       "hist-interval avg V coriolis tendency" "m s-2"
+state   real    rw_tendm_cor      ikj     dyn_em          1               Z               - "RW_TENDM_COR"       "hist-interval avg W coriolis tendency" "m s-2"
+
+# instaneous and history-interval averaged change of wind due to grid curvature (i.e., map factor)
+state   real    ru_tend_curv      ikj     dyn_em          1               X               - "RU_TEND_CURV"       "u curvature tendency" "m s-2"
+state   real    rv_tend_curv      ikj     dyn_em          1               Y               - "RV_TEND_CURV"       "v curvature tendency" "m s-2"
+state   real    rw_tend_curv      ikj     dyn_em          1               Z               - "RW_TEND_CURV"       "w curvature tendency" "m s-2"
+state   real    ru_tendm_curv     ikj     dyn_em          1               X               - "RU_TENDM_CURV"      "hist-interval avg U curvature tendency" "m s-2"
+state   real    rv_tendm_curv     ikj     dyn_em          1               Y               - "RV_TENDM_CURV"      "hist-interval avg V curvature tendency" "m s-2"
+state   real    rw_tendm_curv     ikj     dyn_em          1               Z               - "RW_TENDM_CURV"      "hist-interval avg W curvature tendency" "m s-2"
+
+# TKE terms
+# instantaneous and history-interval averaged change of TKE by advection
+state   real    tke_tend_adv      ikj     dyn_em          1               -               - "TKE_TEND_ADV"       "TKE advection" "m2 s-3"
+state   real    tke_tendm_adv     ikj     dyn_em          1               -               - "TKE_TENDM_ADV"      "hist-interval avg TKE advection" "m2 s-3"
+# instantaneous and history-interval averaged change of TKE by horizontal diffusion (use diff_opt=2)
+state   real    tke_tend_hdiff    ikj     dyn_em          1               -               - "TKE_TEND_HDIFF"     "TKE horizontal diffusion tendency" "m2 s-3"
+state   real    tke_tendm_hdiff   ikj     dyn_em          1               -               - "TKE_TENDM_HDIFF"    "hist-interval avg TKE hor diffusion tendency" "m2 s-3"
+# instantaneous and history-interval averaged change of TKE by vertical diffusioni (use diff_opt=2)
+state   real    tke_tend_vdiff    ikj     dyn_em          1               -               - "TKE_TEND_VDIFF"     "TKE vertical diffusion tendency" "m2 s-3"
+state   real    tke_tendm_vdiff   ikj     dyn_em          1               -               - "TKE_TENDM_VDIFF"    "hist-interval avg TKE vert diffusion tendency" "m2 s-3"
+# instantaneous and history-interval averaged shear production of TKE (works only with km_opt=2)
+state   real    tke_shear         ikj     misc            1               -               - "TKE_SHEAR"          "TKE shear production" "m2 s-3"
+state   real    tke_avg_shear     ikj     misc            1               -               - "TKE_AVG_SHEAR"      "hist-interval avg TKE shear production" "m2 s-3"
+# instantaneous and history-interval averaged buoyancy production of TKE (works only with km_opt=2)
+state   real    tke_buoy          ikj     misc            1               -               - "TKE_BUOY"           "TKE buoyancy production" "m2 s-3"
+state   real    tke_avg_buoy      ikj     misc            1               -               - "TKE_AVG_BUOY"       "hist-interval avg TKE buoyancy production" "m2 s-3"
+# instantaneous and history-interval averaged dissipation of TKE (works only with km_opt=2)
+state   real    tke_diss          ikj     misc            1               -               - "TKE_DISS"           "TKE dissipation" "m2 s-3"
+state   real    tke_avg_diss      ikj     misc            1               -               - "TKE_AVG_DISS"       "hist-interval avg TKE dissipation" "m2 s-3"
+
+# unstaggered vertical velocity (on mass grid points)
+state   real    wmass             ikj     misc            1               -               - "Wmass"              "vert. velocity W on mass points" "m s-1"
+# history-interval averages of wind components, destaggered to mass points
+state   real    umean             ikj     misc            1               -               - "UMEAN"              "hist-interval avg x-velocity"  "m s-1"
+state   real    vmean             ikj     misc            1               -               - "VMEAN"              "hist-interval avg y-velocity"  "m s-1"
+state   real    wmean             ikj     misc            1               -               - "WMEAN"              "hist-interval avg z-velocity on mass levels"  "m s-1"
+# history-interval average of dry potential temperature 
+state   real    thmean            ikj     misc            1               -               - "THMEAN"             "hist-interval avg potential temperature" "K"
+
+# history-interval average of products used to derve (co-)variances, THETA is dry potential tempearture, destaggered to mass points
+state   real    uvmean            ikj     misc            1               -               - "UVMEAN"             "hist-interval avg product UV"  "m2 s-2"
+state   real    uwmean            ikj     misc            1               -               - "UWMEAN"             "hist-interval avg product UW"  "m2 s-2"
+state   real    vwmean            ikj     misc            1               -               - "VWMEAN"             "hist-interval avg product VW"  "m2 s-2"
+state   real    uthmean           ikj     misc            1               -               - "UTHMEAN"            "hist-interval avg product UTHETA" "K m s-1"
+state   real    vthmean           ikj     misc            1               -               - "VTHMEAN"            "hist-interval avg product VTHETA"  "K m s-1"
+state   real    wthmean           ikj     misc            1               -               - "WTHMEAN"            "hist-interval avg product WTHETA"  "K m s-1"
+state   real    uumean            ikj     misc            1               -               - "UUMEAN"             "hist-interval avg product UU"  "m2 s-2"
+state   real    vvmean            ikj     misc            1               -               - "VVMEAN"             "hist-interval avg product VV"  "m2 s-2"
+state   real    wwmean            ikj     misc            1               -               - "WWMEAN"             "hist-interval avg product WW"  "m2 s-2"
+
+#  history-interval average of eddy horizontal and vertical eddy viscosity and eddy diffusivity
+state   real    xkmhMEAN          ikj     misc            1               -               - "XKMHMEAN"           "hist-interval avg hor. exch. coef. for mom"     "m2 s-1"
+state   real    xkmvMEAN          ikj     misc            1               -               - "XKMVMEAN"           "hist-interval avg vert. exch. coef. for mom"    "m2 s-1"
+state   real    xkhhMEAN          ikj     misc            1               -               - "XKHHMEAN"           "hist-interval avg hor. exch. coef. for heat"    "m2 s-1"
+state   real    xkhvMEAN          ikj     misc            1               -               - "XKHVMEAN"           "hist-interval avg vert. exch. coef. for heat"   "m2 s-1"
+
+# instantaneous and history-interval averaged dry potential temperature advection in physical space
+state   real    THtotaladvX       ikj     misc            1               -               - "THtotaladvX"        "advection of dry theta in X" "K s-1"
+state   real    THtotaladvY       ikj     misc            1               -               - "THtotaladvY"        "advection of dry theta in Y" "K s-1"
+state   real    THtotaladvZ       ikj     misc            1               -               - "THtotaladvZ"        "advection of dry theta in Z" "K s-1"
+state   real    meanTHtotaladvX   ikj     misc            1               -               - "meanTHtotaladvX"    "hist-interval avg advection of dry theta in X" "K s-1"
+state   real    meanTHtotaladvY   ikj     misc            1               -               - "meanTHtotaladvY"    "hist-interval avg advection of dry theta in Y" "K s-1"
+state   real    meanTHtotaladvZ   ikj     misc            1               -               - "meanTHtotaladvZ"    "hist-interval avg advection of dry theta in Z" "K s-1"
+
+# instantaneous and history-interval averaged dry potential temperature MEAN FLOW advection in physical space 
+state   real    THmeanadvX        ikj     misc            1               -               - "THmeanadvX"         "mean flow advcetion of dry theta in X" "K s-1"
+state   real    THmeanadvY        ikj     misc            1               -               - "THmeanadvY"         "mean flow advcetion of dry theta in Y" "K s-1"
+state   real    THmeanadvZ        ikj     misc            1               -               - "THmeanadvZ"         "mean flow advcetion of dry theta in Z" "K s-1"
+
+# instantaneous and history-interval averaged dry potential temperature tendencies from SGS mixing in physical space (with diff_opt=2 and km_opt=2)
+state   real    sgsUTHtend        ikj     misc            1               -               - "sgsUTHtend"         "dry theta tendency from SGS mixing in X" "K s-1"
+state   real    sgsVTHtend        ikj     misc            1               -               - "sgsVTHtend"         "dry thete tendency from SGS mixing in Y" "K s-1"
+state   real    sgsWTHtend        ikj     misc            1               -               - "sgsWTHtend"         "dry theta tendency from SGS mixing in Z" "K s-1"
+state   real    sgsUTHtendmean    ikj     misc            1               -               - "sgsUTHtendmean"     "hist-interval avg theta tendency from SGS mixing in X" "K s-1"
+state   real    sgsVTHtendmean    ikj     misc            1               -               - "sgsVTHtendmean"     "hist-interval avg theta tendency from SGS mixing in Y" "K s-1"
+state   real    sgsWTHtendmean    ikj     misc            1               -               - "sgsWTHtendmean"     "hist-interval avg theta tendency from SGS mixing in Z" "K s-1"
+
+# instantaneous SGS turbulence diagnostics, vertical heat and momentum fluxes are staggered in Z direction! 
+state   real    sgsUU             ikj     misc            1               -               - "sgsUU"              "SGS variance of x-wind" "m2 s-2"
+state   real    sgsVV             ikj     misc            1               -               - "sgsVV"              "SGS variance of y-wind" "m2 s-2"
+state   real    sgsWW             ikj     misc            1               -               - "sgsWW"              "SGS variance of z-wind" "m2 s-2"
+state   real    sgsUTH            ikj     misc            1               -               - "sgsUTH"             "SGS horizontal heat flux in x" "K m s-1"
+state   real    sgsVTH            ikj     misc            1               -               - "sgsVTH"             "SGS horizontal heat flux in y" "K m s-1"
+state   real    sgsWTH            ikj     misc            1               Z               - "sgsWTH"             "SGS vertical heat flux" "K m s-1"
+state   real    sgsUV             ikj     misc            1               -               - "sgsUV"              "SGS horizontal momentum flux" "K m s-1"
+state   real    sgsUW             ikj     misc            1               Z               - "sgsUW"              "SGS vertical momentum flux" "m2 s-2"
+state   real    sgsVW             ikj     misc            1               Z               - "sgsVW"              "SGS vertical momentum flux" "m2 s-2"
+
+# history-interval averaged SGS turbulence diagnostics, vertical heat and momentum fluxes are staggered in Z direction!
+state   real    sgsUUmean         ikj     misc            1               -               - "sgsUUmean"          "hist-interval avg SGS variance of x-wind" "m2 s-2"
+state   real    sgsVVmean         ikj     misc            1               -               - "sgsVVmean"          "hist-interval avg SGS variance of y-wind" "m2 s-2"
+state   real    sgsWWmean         ikj     misc            1               -               - "sgsWWmean"          "hist-interval avg SGS variance of z-wind" "m2 s-2"
+state   real    sgsUTHmean        ikj     misc            1               -               - "sgsUTHmean"         "hist-interval avg SGS horizontal heat flux in x" "K m s-1"
+state   real    sgsVTHmean        ikj     misc            1               -               - "sgsVTHmean"         "hist-interval avg SGS horizontal heat flux in y" "K m s-1"
+state   real    sgsWTHmean        ikj     misc            1               Z               - "sgsWTHmean"         "hist-interval avg SGS vertical heat flux in z" "K m s-1"
+state   real    sgsUVmean         ikj     misc            1               -               - "sgsUVmean"          "hist-interval avg SGS horizontal momentum flux" "K m s-1"
+state   real    sgsUWmean         ikj     misc            1               Z               - "sgsUWmean"          "hist-interval avg SGS vertical momentum flux" "m2 s-2"
+state   real    sgsVWmean         ikj     misc            1               Z               - "sgsVWmean"          "hist-interval avg SGS vertical momentum flux" "m2 s-2"
+
+# instantaneous SGS surface fluxes
+state   real    sfcWTH            ij      misc            1               -               - "sfcWTH"             "SGS upward surface heat flux" "K m s-1"
+state   real    sfcUW             ij      misc            1               -               - "sfcUW"              "SGS upward surface momentum flux from ustar" "m2 s-2"
+# history-interval averaged SGS surface fluxes
+state   real    sfcWTHmean        ij      misc            1               -               - "sfcWTHmean"         "hist-interval avg SGS upward surface heat flux" "K m s-1"
+state   real    sfcUWmean         ij      misc            1               -               - "sfcUWmean"          "hist-interval avg SGS upward surface momentum flux" "m2 s-2"
+state   real    HFXmean           ij      misc            1               -               - "HFXmean"            "hist-interval avg SGS upardd heat flux" "W m-2"
+
+# namelist options to change length scale in SGS turbulence parameterization from WRF default ( l=(dx*dy*dz)**0.33 ) to l=dx, following Schmidli (2013) 
+rconfig  integer  les_lscale      namelist,dynamics       1               1               - "LES length scale"  "1=WRF default (dxdydz)**0.33, 2=dx"
+
+# user-specified lapse rate for temperature extrapolation 
+rconfig real    t_extrap_lr       namelist,domains        1               0.004          irh "user-specified temperature lapse rate for extrapolation"   "K m-1"
+
+
