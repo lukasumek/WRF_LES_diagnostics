@@ -16,5 +16,7 @@ var(W) = WWMEAN - WMEAN * WMEAN
 Cartesian components of the resolved part of turbulent mixing can be calculated in postprocessing by:
 
 RESTRBx = meanTOTADVx - MADVx
+
 RESTRBy = meanTOTADVy - MADVy
+
 RESTRBz = meanTOTADVz - MADVz
