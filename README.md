@@ -7,11 +7,13 @@ Diagnostics include terms extracted from the dynamical core of the WRF model and
 
 Resolved variances of wind components can be calculated in post-processing by:
 
-var(U) = UUMEAN - UMEAN*UMEAN
-var(V) = VVMEAN - VMEAN*VMEAN
-var(W) = WWMEAN - WMEAN*WMEAN
+var(U) = UUMEAN - UMEAN * UMEAN
 
-Cartesion components of the resolved part of turbulent mixing can be calculated in postprocessing by:
+var(V) = VVMEAN - VMEAN * VMEAN
+
+var(W) = WWMEAN - WMEAN * WMEAN
+
+Cartesian components of the resolved part of turbulent mixing can be calculated in postprocessing by:
 
 RESTRBx = meanTOTADVx - MADVx
 RESTRBy = meanTOTADVy - MADVy
