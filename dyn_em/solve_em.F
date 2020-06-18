@@ -79,6 +79,9 @@ SUBROUTINE solve_em ( grid , config_flags  &
    USE module_avgflx_em, ONLY : zero_avgflx, upd_avgflx, calc_sgs_and_adv, &
                                 calc_dVARdX, calc_dVARdY,calc_dVARdZ, calc_meanadv
    USE module_cpl, ONLY : coupler_on, cpl_settime, cpl_store_input
+! cLU start
+   USE module_advect_em, ONLY : advect_scalar_X, advect_scalar_Y, advect_scalar_Z
+! cLU end
 
    IMPLICIT NONE
 
@@ -804,10 +807,11 @@ BENCH_START(rk_tend_tim)
 
        CALL wrf_debug ( 200 , ' call rk_tendency' )
        CALL rk_tendency ( config_flags, rk_step                                                                &
-                         ,grid%ru_tend, grid%rv_tend, rw_tend, ph_tend, t_tend                                 &
-                         ,grid%ru_tend_pgf,  grid%rv_tend_pgf,  grid%rw_tend_buoy                              & 
-                         ,grid%ru_tend_cor,  grid%rv_tend_cor,  grid%rw_tend_cor                               &
-                         ,grid%ru_tend_curv, grid%rv_tend_curv, grid%rw_tend_curv                              &
+                         ,grid%ru_tend, grid%rv_tend, rw_tend, ph_tend, t_tend                                 & ! cLU start
+                         ,grid%ru_tend_adv, grid%rv_tend_adv, grid%rw_tend_adv, grid%rt_tend_adv               & ! inst. adv. tend.
+                         ,grid%ru_tend_pgf, grid%rv_tend_pgf, grid%rw_tend_buoy                                & ! inst. hor. PGF and buoy.
+                         ,grid%ru_tend_cor, grid%rv_tend_cor, grid%rw_tend_cor                                 & ! inst. coriolis effect
+                         ,grid%ru_tend_curv, grid%rv_tend_curv, grid%rw_tend_curv                              & ! inst. curvature effect
                          ,ru_tendf, rv_tendf, rw_tendf, ph_tendf, t_tendf                                      &
                          ,mu_tend, grid%u_save, grid%v_save, w_save, ph_save                                   &
                          ,grid%t_save, mu_save, grid%rthften                                                   &
@@ -2141,7 +2145,7 @@ BENCH_END(small_step_finish_tim)
 
 BENCH_START(rk_scalar_tend_tim)
                CALL rk_scalar_tend (  im, im, config_flags, tenddec,         &
-                           .false., grid%tke_tend_adv,                       & ! cLU moisture advection -> flag is .false.
+                           .false., grid%tke_tend_adv,                       & ! cLU moisture advectiion -> false 
                            rk_step, dt_rk,                                   &
                            grid%ru_m, grid%rv_m, grid%ww_m,                  &
                            grid%muts, grid%mub, grid%mu_1,                   &
@@ -2310,7 +2314,7 @@ BENCH_START(tke_adv_tim)
            CALL wrf_debug ( 200 , ' call rk_scalar_tend for tke' )
            tenddec = .false.
            CALL rk_scalar_tend ( 1, 1, config_flags, tenddec,                      & ! cLU start
-                            .true., grid%tke_tend_adv,                             & ! TKE advection -> flag is .true. cLU end
+                            .true., grid%tke_tend_adv,                             & ! cLU TKE advection
                             rk_step, dt_rk,                                        &
                             grid%ru_m, grid%rv_m, grid%ww_m,                       &
                             grid%muts, grid%mub, grid%mu_1,                        &
@@ -2403,7 +2407,7 @@ BENCH_START(chem_adv_tim)
              tenddec = (( config_flags%chemdiag == USECHEMDIAG ) .and. &
                         ( adv_ct_indices(ic) >= PARAM_FIRST_SCALAR ))
              CALL rk_scalar_tend ( ic, ic, config_flags, tenddec,                &
-                              .false., grid%tke_tend_adv,                        & ! cLU chem advectiion -> flag is .false.
+                              .false., grid%tke_tend_adv,                        & ! cLU chem advectiion -> false 
                               rk_step, dt_rk,                                    &
                               grid%ru_m, grid%rv_m, grid%ww_m,                   &
                               grid%muts, grid%mub, grid%mu_1,                    &
@@ -2565,7 +2569,7 @@ BENCH_START(tracer_adv_tim)
              CALL wrf_debug ( 15 , ' call rk_scalar_tend in tracer_tile_loop_1' )
              tenddec = .false.
              CALL rk_scalar_tend ( ic, ic, config_flags, tenddec,                &
-                              .false., grid%tke_tend_adv,                        & ! cLU tracer advectiion -> flag is .false.
+                              .false., grid%tke_tend_adv,                         & ! cLU tracer advectiion -> false 
                               rk_step, dt_rk,                                    &
                               grid%ru_m, grid%rv_m, grid%ww_m,                   &
                               grid%muts, grid%mub, grid%mu_1,                    &
@@ -2707,7 +2711,7 @@ BENCH_END(tracer_adv_tim)
            CALL wrf_debug ( 200 , ' call rk_scalar_tend' )
            tenddec = .false.
            CALL rk_scalar_tend ( is, is, config_flags, tenddec,                   & 
-                                .false., grid%tke_tend_adv,                       & ! cLU scalar advection -> flag is .false.
+                                .false., grid%tke_tend_adv,                       & ! cLU scalar advection -> false 
                                  rk_step, dt_rk,                                  &
                                  grid%ru_m, grid%rv_m, grid%ww_m,                 &
                                  grid%muts, grid%mub, grid%mu_1,                  &
@@ -4527,20 +4531,20 @@ BENCH_END(bc_2d_tim)
 
 ! cLU start
 
-  ! send values from start of time-step which were used to derive mixing
-  ! coefficients 
+  ! reconstruct balues from start of time-step on mass points 
+  ! u_phy, v_phy, t_phy, th_phy are uncoupled and on mass points
   !$OMP PARALLEL DO   &
   !$OMP PRIVATE ( ij )
   DO ij = 1 , grid%num_tiles
       CALL wrf_debug ( 200 , ' call phy_prep' )
       CALL phy_prep ( config_flags,                                    &
-                      grid%muts, grid%muus, grid%muvs,                 &
+                      grid%mut, grid%muu, grid%muv,                    &
                       grid%c1h, grid%c2h, grid%c1f, grid%c2f,          &
                       grid%u_1, grid%v_1, grid%p, grid%pb, grid%alt,   &
-                      grid%ph_1, grid%phb, grid%t_1, moist, num_moist, &
-                      grid%rho,th_phy, grid%th_phy_m_t0,               &
+                      grid%ph_1, grid%phb, grid%t_1, moist_old, num_moist, &
+                      grid%rho, th_phy, grid%th_phy_m_t0,              &
                       p_phy, pi_phy, grid%u_phy, grid%v_phy,           &
-                      p8w, grid%t_phy, t8w, grid%z, grid%z_at_w, dz8w, & 
+                      p8w, grid%t_phy, t8w, grid%th8w, grid%z, grid%z_at_w, dz8w, & ! cLU
                       grid%p_hyd, grid%p_hyd_w, grid%dnw,              &
                       grid%fnm, grid%fnp, grid%znw, grid%p_top,        &
                       ids, ide, jds, jde, kds, kde,                    &
@@ -4549,12 +4553,65 @@ BENCH_END(bc_2d_tim)
    ENDDO
    !$OMP END PARALLEL DO
 
+   ! communicate values to do adevtion and gradients
 #ifdef DM_PARALLEL
 # include "HALO_EM_D2_3.inc"
 # include "HALO_EM_SBM.inc"
 #endif
 
-  ! new location for averaging. Moved here to include h_diabatic and uncoupled
+
+  ! call subroutines to diagnose advection of potential temperature perturbation 
+  ! in X,Y,Z on model levels after all R-K steps
+   CALL wrf_debug(200,'LU in solve_em, before zeroing xyz advection')
+
+   grid%rt_tend_adv_x = 0.
+   grid%rt_tend_adv_y = 0.
+   grid%rt_tend_adv_z = 0.
+
+   CALL nl_get_time_step ( 1, time_step )
+
+   CALL wrf_debug(200,'LU in solve_em, before callin xyz advection')
+
+   !$OMP PARALLEL DO   &
+   !$OMP PRIVATE ( ij )
+   DO ij = 1 , grid%num_tiles
+     ! ==== Compute advective tendency of theta in x,y,z:
+     CALL advect_scalar_X(grid%th_phy_m_t0, grid%th_phy_m_t0, grid%rt_tend_adv_x, &
+                          grid%ru, time_step, config_flags,       &
+                          grid%msfux, grid%msfuy, grid%msfvx,     &
+                          grid%msfvy, grid%msftx, grid%msfty,     &
+                          grid%fnm, grid%fnp, grid%rdx, grid%rdy, &
+                          ids, ide, jds, jde, kds, kde,  &
+                          ims, ime, jms, jme, kms, kme,  &
+                          grid%i_start(ij), grid%i_end(ij), grid%j_start(ij), grid%j_end(ij), &
+                          k_start, k_end )
+
+     CALL advect_scalar_Y(grid%th_phy_m_t0, grid%th_phy_m_t0, grid%rt_tend_adv_y, &
+                          grid%rv, time_step, config_flags,       &
+                          grid%msfux, grid%msfuy, grid%msfvx,     &
+                          grid%msfvy, grid%msftx, grid%msfty,     &
+                          grid%fnm, grid%fnp, grid%rdx, grid%rdy, &
+                          ids, ide, jds, jde, kds, kde,  &
+                          ims, ime, jms, jme, kms, kme,  &
+                          grid%i_start(ij), grid%i_end(ij), grid%j_start(ij), grid%j_end(ij), &
+                          k_start, k_end )
+
+
+     CALL advect_scalar_Z(grid%th_phy_m_t0, grid%th_phy_m_t0, grid%rt_tend_adv_z, &
+                          grid%ww, grid%time_step, config_flags,       &
+                          grid%msfux, grid%msfuy, grid%msfvx,     &
+                          grid%msfvy, grid%msftx, grid%msfty,     &
+                          grid%fnm, grid%fnp, grid%rdnw,          &
+                          ids, ide, jds, jde, kds, kde,  &
+                          ims, ime, jms, jme, kms, kme,  &
+                          grid%i_start(ij), grid%i_end(ij), grid%j_start(ij), grid%j_end(ij), &
+                          k_start, k_end )
+
+   END DO
+   !$OMP END PARALLEL DO
+   CALL wrf_debug(200,'LU in solve_em, after xyz advection')
+
+  ! new location for averaging. Moved here to include h_diabatic and uncouple
   ! physics tendencies
    IF (config_flags%do_avgflx_em .EQ. 1) THEN
   ! Reinitialize time-averaged fluxes if history output was written after the
@@ -4591,26 +4648,36 @@ BENCH_END(bc_2d_tim)
               &   grid%i_start(ij), grid%i_end(ij), grid%j_start(ij), grid%j_end(ij), k_start, k_end, f_flux, &
               &   grid%avgflx_cfu1,grid%avgflx_cfd1,grid%avgflx_dfu1, &
               &   grid%avgflx_efu1,grid%avgflx_dfd1,grid%avgflx_efd1, & ! cLU start
-              &   grid%tke_tendm_adv,              &
-              &   grid%tke_tendm_hdiff, grid%tke_tendm_vdiff,        & ! vert. diff of theta and tke 
-              &   grid%ru_tendm_pgf, grid%rv_tendm_pgf, grid%rw_tendm_buoy, & ! pressure and buoyancy
+              &   grid%ru_tendmean, grid%rv_tendmean, grid%rw_tendmean,        &
+              &   grid%rt_tendmean, grid%tke_tendmean,                       & ! total tend
+              &   grid%ru_tendfmean, grid%rv_tendfmean, grid%rw_tendfmean, grid%rt_tendfmean, & ! total physics tend
+              &   grid%ru_tendm_adv, grid%rv_tendm_adv, grid%rw_tendm_adv, & ! advection tend
+              &   grid%rt_tendm_adv, grid%tke_tendm_adv, & ! advection tend
+              &   grid%rt_tendm_adv_x, grid%rt_tendm_adv_y, grid%rt_tendm_adv_z, & ! adv in x/y/z on model levels
+              &   grid%ru_tendm_pgf, grid%rv_tendm_pgf, grid%rw_tendm_buoy, & ! pressure gradient and buoyancy
               &   grid%ru_tendm_cor, grid%rv_tendm_cor, grid%rw_tendm_cor, & ! coriolis force
               &   grid%ru_tendm_curv, grid%rv_tendm_curv, grid%rw_tendm_curv, & ! curvature effect
+              &   grid%ru_tendm_hdiff, grid%rv_tendm_hdiff, grid%rw_tendm_hdiff, & ! hor. diff of wind
+              &   grid%rt_tendm_hdiff, grid%tke_tendm_hdiff, & ! hor. diff of theta and tke
+              &   grid%ru_tendm_vdiff, grid%rv_tendm_vdiff, grid%rw_tendm_vdiff, & ! vert. diff of wind
+              &   grid%rt_tendm_vdiff, grid%tke_tendm_vdiff, & ! vert. diff of theta and tke 
               &   grid%rt_tendm_rad, grid%rt_tendm_radlw, grid%rt_tendm_radsw, & ! Thetatend from physics
               &   grid%rt_tendm_mp, & ! Thetatend from MP
               &   grid%tke_avg_shear, grid%tke_avg_buoy, grid%tke_avg_diss, & ! TKE from deardorf
-              &   grid%UMEAN,   grid%VMEAN,   grid%WMEAN, grid%THMEAN,      & 
+              &   grid%UMEAN,   grid%VMEAN,   grid%WMEAN,                   &
+              &   grid%THMEAN,  grid%TH8WMEAN,                              & 
               &   grid%UVMEAN,  grid%UWMEAN,  grid%VWMEAN,                  &
               &   grid%UUMEAN,  grid%VVMEAN,  grid%WWMEAN,                  &
               &   grid%UTHMEAN, grid%VTHMEAN, grid%WTHMEAN,                 &
               &   grid%xkmhMEAN,grid%xkmvMEAN,                              &
               &   grid%xkhhMEAN,grid%xkhvMEAN,                              &
-              &   grid%sgsUUMEAN,  grid%sgsVVMEAN,  grid%sgsWWMEAN,                  &
-              &   grid%sgsUTHMEAN, grid%sgsVTHMEAN, grid%sgsWTHMEAN,                 &
-              &   grid%sgsUVMEAN,  grid%sgsUWMEAN,  grid%sgsVWMEAN,                  &
-              &   grid%sfcUWMEAN,  grid%sfcWTHMEAN, grid%hfxMEAN,                    & 
-              &   grid%sgsUTHtendMEAN, grid%sgsVTHtendMEAN, grid%sgsWTHtendMEAN,     &
-              &   grid%meanTHtotaladvX, grid%meanTHtotaladvY, grid%meanTHtotaladvZ )
+              &   grid%sgsUUm,  grid%sgsVVm,  grid%sgsWWm,                  &
+              &   grid%sgsUTHm, grid%sgsVTHm, grid%sgsWTHm,                 &
+              &   grid%sgsUVm,  grid%sgsUWm,  grid%sgsVWm,                  &
+              &   grid%sfcUWm,  grid%sfcWTHm, grid%HFXmean, & ! SFC fluxes d
+              &   grid%sgsUTHtendm, grid%sgsVTHtendm, grid%sgsWTHtendm,     &
+              &   grid%meanTHtotaladvX, grid%meanTHtotaladvY,               & 
+              &   grid%meanTHtotaladvZ )
 
             CALL wrf_debug(200,'In solve_em, after zero_avgflx call')
          ENDDO
@@ -4620,36 +4687,37 @@ BENCH_END(bc_2d_tim)
    !$OMP PRIVATE ( ij )
       DO ij = 1, grid%num_tiles
          CALL calc_sgs_and_adv(ids, ide, jds, jde, kds, kde, &
-              & ims, ime, jms, jme, kms, kme,                &
-              & grid%i_start(ij), grid%i_end(ij),            &
-              & grid%j_start(ij), grid%j_end(ij),            &
-              & k_start, k_end,                              &
-              & config_flags,                                &
-              & grid%muu, grid%muv, grid%mut,                &
-              & grid%msftx, grid%msfty,                      &
-              & grid%msfux, grid%msfuy,                      &
-              & grid%msfvx, grid%msfvy,                      &
-              & grid%rdx, grid%rdy, grid%fnm, grid%fnp,      &
-              & grid%zx, grid%zy, grid%rdz, grid%rdzw,       &
-              & grid%dnw, grid%dn,                           &
-              & th_phy, grid%u_phy, grid%v_phy,              & 
-              & grid%tke_1, grid%w_1,                        &
-              & grid%z, grid%z_at_w,                         &
-              & grid%xkmh, grid%xkmv, grid%xkhh, grid%xkhv,  &
-              & grid%cf1, grid%cf2, grid%cf3,                &
-              & moist, grid%rho, grid%hfx, grid%ust,         &
-              & grid%WMASS,                                  &
-              & grid%sfcWTH, grid%sfcUW,                     &
-              & grid%sgsUU,  grid%sgsVV,  grid%sgsWW,        &
-              & grid%sgsUV,  grid%sgsUW,  grid%sgsVW,        &
-              & grid%sgsUTH, grid%sgsVTH, grid%sgsWTH,       &
+              & ims, ime, jms, jme, kms, kme,            &
+              & grid%i_start(ij), grid%i_end(ij), grid%j_start(ij), grid%j_end(ij), &
+              & k_start, k_end,        &
+              & config_flags,                           &
+              & grid%muus, grid%muvs, grid%muts,        &
+              & grid%msftx, grid%msfty,                 &
+              & grid%msfux, grid%msfuy,               &
+              & grid%msfvx, grid%msfvy,         &
+              & grid%rdx, grid%rdy, grid%fnm, grid%fnp, &
+              & grid%zx, grid%zy, grid%rdz, grid%rdzw,  &
+              & grid%dnw, grid%dn,                      &
+              & th_phy, grid%th8w,                       &
+              & grid%u_phy, grid%v_phy, grid%tke_1,     &
+              & grid%u_1, grid%v_1, grid%w_1,           &
+              & grid%z, grid%z_at_w,                    & ! height AGL for mass and w levels 
+              & grid%xkmh, grid%xkmv,                   &
+              & grid%xkhh, grid%xkhv,                   &
+              & grid%cf1, grid%cf2, grid%cf3,           & !  extrapolationterms
+              & moist, grid%rho, grid%hfx, grid%ust,    &
+              & grid%WMASS,                             &
+              & grid%sfcWTH, grid%sfcUW,                &
+              & grid%sgsUU,  grid%sgsVV,  grid%sgsWW,   &
+              & grid%sgsUV,  grid%sgsUW,  grid%sgsVW,   &
+              & grid%sgsUTH, grid%sgsVTH, grid%sgsWTH,  &
               & grid%THtotaladvX, grid%THtotaladvY, grid%THtotaladvZ,  &
-              & grid%sgsUTHtend,  grid%sgsVTHtend,  grid%sgsWTHtend )
+              & grid%sgsUTHtend, grid%sgsVTHtend, grid%sgsWTHtend )! , &
       END DO
    !$OMP END PARALLEL DO
 
-   ! Update avgflx quantities
-   ! tile-loop for upd_avgflx
+      ! Update avgflx quantities
+      ! tile-loop for upd_avgflx
    !$OMP PARALLEL DO   &
    !$OMP PRIVATE ( ij )
       DO ij = 1 , grid%num_tiles
@@ -4664,59 +4732,82 @@ BENCH_END(bc_2d_tim)
               &   grid%avgflx_cfu1,grid%avgflx_cfd1,grid%avgflx_dfu1, &
               &   grid%avgflx_efu1,grid%avgflx_dfd1,grid%avgflx_efd1, &
               &   config_flags,                                       &
-              &   grid%muu, grid%muv, grid%mut,                       & ! dry air masses for uncoupling /as in phy_prep_part2
+              &   grid%muus, grid%muvs, grid%muts,                    & ! dry air masses for uncoupling /as in phy_prep_part2
               &   grid%c1h, grid%c2h, grid%c1f, grid%c2f,  & ! parameters of vertical coordinate mass and full levels
-              &   grid%tke_tendm_adv,   &  
-              &   grid%tke_tendm_hdiff, grid%tke_tendm_vdiff, & 
-              &   grid%ru_tendm_pgf,  grid%rv_tendm_pgf,   grid%rw_tendm_buoy, & ! pressure and buoyancy
-              &   grid%ru_tendm_cor,  grid%rv_tendm_cor,   grid%rw_tendm_cor, & ! coriolis force
-              &   grid%ru_tendm_curv, grid%rv_tendm_curv,  grid%rw_tendm_curv, & ! curvature effect
-              &   grid%rt_tendm_rad,  grid%rt_tendm_radlw, grid%rt_tendm_radsw, & ! Thetatend from physics
+              &   grid%ru_tendmean, grid%rv_tendmean, grid%rw_tendmean,         & ! total tend
+              &   grid%rt_tendmean, grid%tke_tendmean,                      & ! total tend
+              &   grid%ru_tendfmean, grid%rv_tendfmean, grid%rw_tendfmean, grid%rt_tendfmean, & ! total physics tend
+              &   grid%ru_tendm_adv, grid%rv_tendm_adv, grid%rw_tendm_adv, & ! advection tend
+              &   grid%rt_tendm_adv, grid%tke_tendm_adv, & ! advection tend  
+              &   grid%rt_tendm_adv_x, grid%rt_tendm_adv_y, grid%rt_tendm_adv_z, & ! theta adv in xyz
+              &   grid%ru_tendm_pgf, grid%rv_tendm_pgf, grid%rw_tendm_buoy, & ! pressure and buoyancy
+              &   grid%ru_tendm_cor, grid%rv_tendm_cor, grid%rw_tendm_cor, & ! coriolis force
+              &   grid%ru_tendm_curv, grid%rv_tendm_curv, grid%rw_tendm_curv, & ! curvature effect
+              &   grid%ru_tendm_hdiff, grid%rv_tendm_hdiff, grid%rw_tendm_hdiff, & ! hor. diff of wind
+              &   grid%rt_tendm_hdiff, grid%tke_tendm_hdiff, & ! hor. diff of theta and tke
+              &   grid%ru_tendm_vdiff, grid%rv_tendm_vdiff, grid%rw_tendm_vdiff, & ! vert. diff of wind
+              &   grid%rt_tendm_vdiff, grid%tke_tendm_vdiff, & ! vert. diff of theta and tke
+              &   grid%rt_tendm_rad, grid%rt_tendm_radlw, grid%rt_tendm_radsw, & ! Thetatend from physics
               &   grid%rt_tendm_mp,                                & ! Thetatend from MP (= diabatic heating)
               &   grid%tke_avg_shear, grid%tke_avg_buoy, grid%tke_avg_diss, & ! TKE from deardorff
-              &   grid%UMEAN,   grid%VMEAN,   grid%WMEAN,  grid%THMEAN,     & 
-              &   grid%UVMEAN,  grid%UWMEAN,  grid%VWMEAN,  &
-              &   grid%UUMEAN,  grid%VVMEAN,  grid%WWMEAN,  &
-              &   grid%UTHMEAN, grid%VTHMEAN, grid%WTHMEAN, &
-              &   grid%xkmhMEAN,grid%xkmvMEAN,               &
-              &   grid%xkhhMEAN,grid%xkhvMEAN,              &
-              &   grid%sgsUUMEAN,  grid%sgsVVMEAN,  grid%sgsWWMEAN,  &
-              &   grid%sgsUTHMEAN, grid%sgsVTHMEAN, grid%sgsWTHMEAN,                   &
-              &   grid%sgsUVMEAN,  grid%sgsUWMEAN,  grid%sgsVWMEAN,                    &
-              &   grid%sfcUWMEAN,  grid%sfcWTHMEAN, grid%hfxMEAN,                   &
-              &   grid%sgsUTHtendMEAN, grid%sgsVTHtendMEAN, grid%sgsWTHtendMEAN, &
-              &   grid%tke_tend_adv, & ! advection tend    
-              &   grid%tke_tend_hdiff, grid%tke_tend_vdiff, & ! vert. diff of theta and tke      
-              &   grid%ru_tend_pgf,  grid%rv_tend_pgf,  grid%rw_tend_buoy, & ! pressure and buoyancy
-              &   grid%ru_tend_cor,  grid%rv_tend_cor,  grid%rw_tend_cor,  & ! coriolis force
+              &   grid%Umean,   grid%Vmean,   grid%Wmean,   &
+              &   grid%THmean,  grid%TH8WMEAN,              &
+              &   grid%UVmean,  grid%UWmean,  grid%VWmean,  &
+              &   grid%UUmean,  grid%VVmean,  grid%WWmean,  &
+              &   grid%UTHmean, grid%VTHmean, grid%WTHmean, &
+              &   grid%XKMHmean,grid%XKMVmean,              &
+              &   grid%XKHHmean,grid%XKHVmean,              &
+              &   grid%sgsUUm,  grid%sgsVVm,  grid%sgsWWm,  &
+              &   grid%sgsUTHm, grid%sgsVTHm, grid%sgsWTHm,                   &
+              &   grid%sgsUVm,  grid%sgsUWm,  grid%sgsVWm,                    &
+              &   grid%sfcUWm,  grid%sfcWTHm, grid%HFXmean,                   &
+              &   grid%sgsUTHtendm, grid%sgsVTHtendm, grid%sgsWTHtendm, &
+              &   grid%ru_tend, grid%rv_tend, rw_tend, &  ! NOW INSTANT VALUES
+              &   t_tend, tke_tend, & 
+              &   ru_tendf, rv_tendf, rw_tendf, t_tendf, &
+              &   grid%ru_tend_adv, grid%rv_tend_adv, grid%rw_tend_adv,  & ! NOW INSTANT. VAL.: advection
+              &   grid%rt_tend_adv, grid%tke_tend_adv, & ! advection tend    
+              &   grid%rt_tend_adv_x, grid%rt_tend_adv_y, grid%rt_tend_adv_z, & ! theta adv in xyz
+              &   grid%ru_tend_pgf, grid%rv_tend_pgf, grid%rw_tend_buoy, & ! pressure and buoyancy
+              &   grid%ru_tend_cor, grid%rv_tend_cor, grid%rw_tend_cor, & ! coriolis force
               &   grid%ru_tend_curv, grid%rv_tend_curv, grid%rw_tend_curv, & ! curvature effect
-              &   grid%RTHRATEN, grid%RTHRATENLW, grid%RTHRATENSW, & ! Theta tend from physics
+              &   grid%ru_tend_hdiff, grid%rv_tend_hdiff, grid%rw_tend_hdiff, & ! hor. diff of wind
+              &   grid%rt_tend_hdiff, grid%tke_tend_hdiff, & ! hor. diff of theta and tke
+              &   grid%ru_tend_vdiff, grid%rv_tend_vdiff, grid%rw_tend_vdiff, & ! vert. diff of wind
+              &   grid%rt_tend_vdiff, grid%tke_tend_vdiff, & ! vert. diff of theta and tke
+              &   grid%RTHRATEN, grid%RTHRATENLW, grid%RTHRATENSW, & ! Thetatend from physics
               &   grid%h_diabatic,                                 & ! MP tendency
               &   grid%tke_shear, grid%tke_buoy, grid%tke_diss,    & ! TKE from deardorff
+              &   grid%ru_tend_res, grid%rv_tend_res,              & ! residuals 
+              &   grid%rw_tend_res, grid%rt_tend_res,              & ! residuals
+              &   grid%ru_tendm_res, grid%rv_tendm_res,              & ! residuals 
+              &   grid%rw_tendm_res, grid%rt_tendm_res,              & ! residuals
               &   grid%u_phy, grid%v_phy, grid%w_2, grid%WMASS,    &
-              &   th_phy,                                          &
+              &   th_phy, grid%th8w,                               &
               &   grid%u_1,   grid%v_1,                            &
               &   grid%z, grid%z_at_w,                             &
-              &   grid%xkmh, grid%xkmv, grid%xkhh, grid%xkhv,      &
+              &   grid%xkmh, grid%xkmv,                   &
+              &   grid%xkhh, grid%xkhv,                   &
               &   grid%cf1, grid%cf2, grid%cf3,       &
               &   grid%sgsUU,  grid%sgsVV,  grid%sgsWW,  &
               &   grid%sgsUV,  grid%sgsUW,  grid%sgsVW,  &
               &   grid%sgsUTH, grid%sgsVTH, grid%sgsWTH, &
-              &   grid%sfcUW,  grid%sfcWTH, grid%hfx,    &
+              &   grid%sfcUW, grid%sfcWTH,  grid%hfx,    &
               &   grid%msftx, grid%msfty,                 &
               &   grid%msfux, grid%msfuy,                 &
               &   grid%msfvx, grid%msfvy,                 &
               &   grid%rdx, grid%rdy, grid%fnm, grid%fnp, &
-              &   grid%zx,  grid%zy, grid%rdz, grid%rdzw,            &
+              &   grid%zx, grid%zy, grid%rdz, grid%rdzw,            &
               &   grid%dnw, grid%dn,                                &
               &   grid%sgsUTHtend, grid%sgsVTHtend, grid%sgsWTHtend, &
               &   grid%THtotaladvX, grid%THtotaladvY, grid%THtotaladvZ,  &
               &   grid%meanTHtotaladvX, grid%meanTHtotaladvY, grid%meanTHtotaladvZ )
 
          CALL wrf_debug(200,'In solve_em, after upd_avgflx call')
-      END DO
+       END DO
    !$OMP END PARALLEL DO
-    ! do a communication to distibute mean values 
+    ! do a communication to distibute mean values for gradients in mean
+    ! advection calculation 
 #ifdef DM_PARALLEL
 # include "HALO_EM_D2_3.inc"
 # include "HALO_EM_SBM.inc"
@@ -4730,51 +4821,50 @@ BENCH_END(bc_2d_tim)
    !$OMP PARALLEL DO   &
    !$OMP PRIVATE ( ij )
       DO ij = 1 , grid%num_tiles
-         CALL calc_meanadv(ids, ide, jds, jde, kds, kde,            &
-         & ims, ime, jms, jme, kms, kme,                            &
-         & grid%i_start(ij), grid%i_end(ij),                        &   
-         & grid%j_start(ij), grid%j_end(ij),                        &
-         & k_start, k_end,                                          &
-         & config_flags,                                            &
-         & grid%muus, grid%muvs, grid%muts,                         &
-         & grid%msftx, grid%msfty,                                  &
-         & grid%msfux, grid%msfuy,                                  &
-         & grid%msfvx, grid%msfvy,                                  &
-         & grid%rdx, grid%rdy, grid%fnm, grid%fnp,                  &
-         & grid%zx, grid%zy, grid%rdz, grid%rdzw,                   &
-         & grid%dn, grid%dnw,                                       &
-         & grid%cf1, grid%cf2, grid%cf3,                            &
-         & grid%THMEAN, grid%UMEAN, grid%VMEAN, grid%WMEAN, grid%Z, &
-         & grid%THmeanadvX, grid%THmeanadvY, grid%THmeanadvZ        )
+         CALL calc_meanadv(ids, ide, jds, jde, kds, kde,           &
+         & ims, ime, jms, jme, kms, kme,           &
+         & grid%i_start(ij), grid%i_end(ij), grid%j_start(ij), grid%j_end(ij), &
+         & k_start, k_end,                   &
+         & config_flags, &
+         & grid%muus, grid%muvs, grid%muts,                          &
+         & grid%msftx, grid%msfty,                           &
+         & grid%msfux, grid%msfuy,                           &
+         & grid%msfvx, grid%msfvy,                           &
+         & grid%rdx, grid%rdy, grid%fnm, grid%fnp,                     &
+         & grid%zx, grid%zy, grid%rdz, grid%rdzw,                      &
+         & grid%dn, grid%dnw,                                &
+         & grid%cf1, grid%cf2, grid%cf3,                          &
+         & grid%THMEAN, grid%TH8Wmean, grid%UMEAN, grid%VMEAN, grid%WMEAN, grid%Z, grid%z_at_w,   &
+         & grid%THmeanadvX, grid%THmeanadvY, grid%THmeanadvZ       )
       ENDDO
    !$OMP END PARALLEL DO
       grid%avgflx_count = grid%avgflx_count + 1
 
    ENDIF
 
-  ! recalculate physics diagnostics with up-to-date values 
-  !$OMP PARALLEL DO   &
-  !$OMP PRIVATE ( ij )
-  DO ij = 1 , grid%num_tiles
-      CALL wrf_debug ( 200 , ' call phy_prep' )
-      CALL phy_prep ( config_flags,                                    &
-                      grid%muts, grid%muus, grid%muvs,                 &
-                      grid%c1h, grid%c2h, grid%c1f, grid%c2f,          &
-                      grid%u_2, grid%v_2, grid%p, grid%pb, grid%alt,   &
-                      grid%ph_2, grid%phb, grid%t_2, moist, num_moist, &
-                      grid%rho,th_phy, grid%th_phy_m_t0,               &
-                      p_phy, pi_phy, grid%u_phy, grid%v_phy,           &
-                      p8w, grid%t_phy, t8w, grid%z, grid%z_at_w, dz8w, &
-                      grid%p_hyd, grid%p_hyd_w, grid%dnw,              &
-                      grid%fnm, grid%fnp, grid%znw, grid%p_top,        &
-                      ids, ide, jds, jde, kds, kde,                    &
-                      ims, ime, jms, jme, kms, kme,                    &
-                      ips, ipe, jps, jpe, kps, kpe                     )
-   ENDDO
-   !$OMP END PARALLEL DO
-#ifdef DM_PARALLEL
-# include "HALO_EM_SBM.inc"
-#endif
+!  ! recalculate physics diagnostics with up-to-date values (time level _2)
+!  !$OMP PARALLEL DO   &
+!  !$OMP PRIVATE ( ij )
+!  DO ij = 1 , grid%num_tiles
+!      CALL wrf_debug ( 200 , ' call phy_prep' )
+!      CALL phy_prep ( config_flags,                                    &
+!                      grid%mut, grid%muu, grid%muv,                    &
+!                      grid%c1h, grid%c2h, grid%c1f, grid%c2f,          &
+!                      grid%u_2, grid%v_2, grid%p, grid%pb, grid%alt,   &
+!                      grid%ph_2, grid%phb, grid%t_2, moist, num_moist, &
+!                      grid%rho,th_phy, grid%th_phy_m_t0,               &
+!                      p_phy, pi_phy, grid%u_phy, grid%v_phy,           &
+!                      p8w, grid%t_phy, t8w, grid%th8w, grid%z, grid%z_at_w, dz8w, & ! cLU
+!                      grid%p_hyd, grid%p_hyd_w, grid%dnw,              &
+!                      grid%fnm, grid%fnp, grid%znw, grid%p_top,        &
+!                      ids, ide, jds, jde, kds, kde,                    &
+!                      ims, ime, jms, jme, kms, kme,                    &
+!                      ips, ipe, jps, jpe, kps, kpe                     )
+!   ENDDO
+!   !$OMP END PARALLEL DO
+!#ifdef DM_PARALLEL
+!# include "HALO_EM_SBM.inc"
+!#endif
 
 
    ! cLU end
@@ -4792,7 +4882,6 @@ BENCH_END(bc_2d_tim)
                             ipsx, ipex, jpsx, jpex, kpsx, kpex,  &
                             imsy, imey, jmsy, jmey, kmsy, kmey,  &
                             ipsy, ipey, jpsy, jpey, kpsy, kpey   )
-
 
 
 #ifdef DM_PARALLEL

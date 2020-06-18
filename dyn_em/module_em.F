@@ -188,6 +188,7 @@ END SUBROUTINE rk_step_prep
 
 SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
                          ru_tend, rv_tend, rw_tend, ph_tend, t_tend,      & ! cLU start
+                         ru_tend_adv, rv_tend_adv, rw_tend_adv, rt_tend_adv, & ! inst. adv. tend.
                          ru_tend_pgf, rv_tend_pgf, rw_tend_buoy,          & ! inst. hor. PGF and buoy.
                          ru_tend_cor, rv_tend_cor, rw_tend_cor,           & ! inst. coriolis effect
                          ru_tend_curv, rv_tend_curv, rw_tend_curv,        & ! inst. curvatuire effect
@@ -271,6 +272,10 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
                                                           w_save, &
                                                          ph_save, &
                                                           t_save, & ! cLU start
+                                                     ru_tend_adv, & 
+                                                     rv_tend_adv, &
+                                                     rw_tend_adv, &
+                                                     rt_tend_adv, & 
                                                      ru_tend_pgf, &
                                                      rv_tend_pgf, & 
                                                     rw_tend_buoy, &
@@ -449,6 +454,7 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
 
      ELSE
      
+     ru_tend_old(ims:ime, kms:kme, jms:jme) = ru_tend(ims:ime, kms:kme, jms:jme) ! cLU 
      CALL advect_u ( u, u , ru_tend, ru, rv, ww, &
                    c1h, c2h,                     &
                    mut, time_step, config_flags, &
@@ -458,6 +464,9 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
                    ids, ide, jds, jde, kds, kde, &
                    ims, ime, jms, jme, kms, kme, &
                    its, ite, jts, jte, kts, kte )
+     ru_tend_adv(ims:ime, kms:kme, jms:jme) = ru_tend(ims:ime, kms:kme, jms:jme) - & 
+                                          ru_tend_old(ims:ime, kms:kme, jms:jme) ! cLU
+
       ENDIF
 
      IF( (rk_step == 3) .and. ( adv_opt == WENO_MOM ) ) THEN
@@ -474,6 +483,7 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
 
     ELSE
      
+     rv_tend_old(ims:ime, kms:kme, jms:jme) = rv_tend(ims:ime, kms:kme, jms:jme)  ! cLU
      CALL advect_v ( v, v , rv_tend, ru, rv, ww,  &
                    c1h, c2h,                     &
                    mut, time_step, config_flags, &
@@ -483,6 +493,8 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
                    ids, ide, jds, jde, kds, kde, &
                    ims, ime, jms, jme, kms, kme, &
                    its, ite, jts, jte, kts, kte )
+     rv_tend_adv(ims:ime, kms:kme, jms:jme) = rv_tend(ims:ime, kms:kme, jms:jme) & 
+                                        - rv_tend_old(ims:ime, kms:kme, jms:jme)  ! cLU
     ENDIF
 
 
@@ -500,6 +512,7 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
 
      ELSE
     
+     rw_tend_old(ims:ime, kms:kme, jms:jme) = rw_tend(ims:ime, kms:kme, jms:jme) ! cLU
      CALL advect_w ( w, w, rw_tend, ru, rv, ww,    &
                      c1h, c2h,                     &
                      mut, time_step, config_flags, &
@@ -509,6 +522,8 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
                      ids, ide, jds, jde, kds, kde, &
                      ims, ime, jms, jme, kms, kme, &
                      its, ite, jts, jte, kts, kte )
+     rw_tend_adv(ims:ime, kms:kme, jms:jme) = rw_tend(ims:ime, kms:kme, jms:jme) &
+                                        - rw_tend_old(ims:ime, kms:kme, jms:jme) ! cLU
      ENDIF
    ENDIF
 !  theta flux divergence
@@ -533,6 +548,7 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
                                  its, ite, jts, jte, kts, kte  )
      ELSE
 
+     rt_tend_old(ims:ime, kms:kme, jms:jme) = t_tend(ims:ime, kms:kme, jms:jme) ! cLU
      CALL advect_scalar ( t, t, t_tend, ru, rv, ww,     &
                           c1h, c2h,                     &
                           mut, time_step, config_flags, &
@@ -542,6 +558,8 @@ SUBROUTINE rk_tendency ( config_flags, rk_step,                           &
                           ids, ide, jds, jde, kds, kde, &
                           ims, ime, jms, jme, kms, kme, &
                           its, ite, jts, jte, kts, kte )
+     rt_tend_adv(ims:ime, kms:kme, jms:jme) = t_tend(ims:ime, kms:kme, jms:jme) &
+                                       - rt_tend_old(ims:ime, kms:kme, jms:jme)! cLU
 
      ENDIF
      

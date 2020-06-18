@@ -139,7 +139,9 @@ CONTAINS
 
     ! cLU start
     ! Introduce auxiliary variables to track the tendency change for diffusion
-    REAL , DIMENSION( ims:ime , kms:kme, jms:jme ) :: tke_tend_old
+    REAL , DIMENSION( ims:ime , kms:kme, jms:jme ) :: ru_tend_old, rv_tend_old, &
+                                                      rw_tend_old, rt_tend_old, & 
+                                                      tke_tend_old
     ! cLU end
 
 
@@ -920,6 +922,10 @@ BENCH_START(vert_diff_tim)
              CALL wrf_debug ( 200 , ' call vertical_diffusion_2 ' )
              ! cLU start
              ! track the changes of the diffusion variables
+             ru_tend_old(ims:ime, kms:kme, jms:jme) = ru_tendf(ims:ime, kms:kme, jms:jme)
+             rv_tend_old(ims:ime, kms:kme, jms:jme) = rv_tendf(ims:ime, kms:kme, jms:jme)
+             rw_tend_old(ims:ime, kms:kme, jms:jme) = rw_tendf(ims:ime, kms:kme, jms:jme)
+             rt_tend_old(ims:ime, kms:kme, jms:jme) = t_tendf(ims:ime, kms:kme, jms:jme)
              tke_tend_old(ims:ime, kms:kme, jms:jme) = tke_tend(ims:ime, kms:kme, jms:jme)
              ! cLU end 
              CALL vertical_diffusion_2( ru_tendf, rv_tendf, rw_tendf,            &
@@ -945,6 +951,14 @@ BENCH_START(vert_diff_tim)
              ! cLU start
              ! Use grid structure to store the specific diffusion terms 
              ! grid is defined as INOUT
+             grid%ru_tend_vdiff(ims:ime, kms:kme, jms:jme)  = ru_tendf(ims:ime, kms:kme, jms:jme) &
+                                                         - ru_tend_old(ims:ime, kms:kme, jms:jme)
+             grid%rv_tend_vdiff(ims:ime, kms:kme, jms:jme)  = rv_tendf(ims:ime, kms:kme, jms:jme) &
+                                                          - rv_tend_old(ims:ime, kms:kme,jms:jme)
+             grid%rw_tend_vdiff(ims:ime, kms:kme, jms:jme)  = rw_tendf(ims:ime, kms:kme, jms:jme) &
+                                                          - rw_tend_old(ims:ime, kms:kme,jms:jme)
+             grid%rt_tend_vdiff(ims:ime, kms:kme, jms:jme)  =  t_tendf(ims:ime, kms:kme, jms:jme) &
+                                                          - rt_tend_old(ims:ime, kms:kme,jms:jme)
              grid%tke_tend_vdiff(ims:ime, kms:kme, jms:jme) = tke_tend(ims:ime, kms:kme, jms:jme) &
                                                          - tke_tend_old(ims:ime, kms:kme,jms:jme)
              ! cLU end
@@ -964,6 +978,10 @@ BENCH_START(hor_diff_tim)
            CALL wrf_debug ( 200 , ' call horizontal_diffusion_2' )
            ! cLU start
            ! track the changes of the diffusion variables
+           ru_tend_old(ims:ime, kms:kme, jms:jme) = ru_tendf(ims:ime, kms:kme, jms:jme)
+           rv_tend_old(ims:ime, kms:kme, jms:jme) = rv_tendf(ims:ime, kms:kme, jms:jme)
+           rw_tend_old(ims:ime, kms:kme, jms:jme) = rw_tendf(ims:ime, kms:kme, jms:jme)
+           rt_tend_old(ims:ime, kms:kme, jms:jme) = t_tendf(ims:ime, kms:kme, jms:jme)
            tke_tend_old(ims:ime, kms:kme, jms:jme) = tke_tend(ims:ime, kms:kme, jms:jme)
            ! cLU end 
            CALL horizontal_diffusion_2( t_tendf, ru_tendf, rv_tendf, rw_tendf, &
@@ -992,6 +1010,14 @@ BENCH_START(hor_diff_tim)
            ! cLU start
            ! Use grid structure to store the specific diffusion terms 
            ! grid is defined as INOUT
+           grid%ru_tend_hdiff(ims:ime, kms:kme, jms:jme)  = ru_tendf(ims:ime, kms:kme, jms:jme) &
+                                                       - ru_tend_old(ims:ime, kms:kme, jms:jme)
+           grid%rv_tend_hdiff(ims:ime, kms:kme, jms:jme)  = rv_tendf(ims:ime, kms:kme, jms:jme) &
+                                                       - rv_tend_old(ims:ime, kms:kme, jms:jme)
+           grid%rw_tend_hdiff(ims:ime, kms:kme, jms:jme)  = rw_tendf(ims:ime, kms:kme, jms:jme) &
+                                                       - rw_tend_old(ims:ime, kms:kme, jms:jme)
+           grid%rt_tend_hdiff(ims:ime, kms:kme, jms:jme)  =  t_tendf(ims:ime, kms:kme, jms:jme) &
+                                                       - rt_tend_old(ims:ime, kms:kme, jms:jme)
            grid%tke_tend_hdiff(ims:ime, kms:kme, jms:jme) = tke_tend(ims:ime, kms:kme, jms:jme) &
                                                       - tke_tend_old(ims:ime, kms:kme, jms:jme)
            ! cLU end

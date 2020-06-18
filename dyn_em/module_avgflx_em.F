@@ -8,9 +8,8 @@ MODULE module_avgflx_em
 
 CONTAINS
 
-! cLU start
 !-------------------------------------------------------------------------------
-  subroutine calc_sgs_and_adv(ids, ide, jds, jde, kds, kde,  &
+  subroutine calc_sgs_and_adv(ids, ide, jds, jde, kds, kde,           &
        & ims, ime, jms, jme, kms, kme,           &
        & its, ite, jts, jte, kts, kte,           &
        & config_flags,                           &
@@ -21,17 +20,18 @@ CONTAINS
        & rdx, rdy, fnm, fnp,                     &
        & zx, zy, rdz, rdzw,                      & 
        & dnw, dn,                                &
-       & TH_PHY, U_PHY, V_PHY,                   &
-       & TKE, W,                                 &
-       & ZPM, ZPW,                               &
+       & TH_PHY, TH8W,                           & ! dry theta at mass- and w-levels
+       & U_PHY, V_PHY, TKE,                      & ! dry theta, u/v unstaggered, 
+       & U, V, W,                                & ! staggered velocities
+       & ZPM, ZPW,                               & ! height AGL for mass and w levels 
        & xkmh, xkmv, xkhh, xkhv,                 &
-       & cf1, cf2, cf3,                          &
+       & cf1, cf2, cf3,                          & !  extrapolationterms
        & moist, rho, hfx, ustar,                 &
        & WMASS,                                  &
        & sfcWTH, sfcUW,                          &
-       & sgsUU,  sgsVV,  sgsWW,                  &
-       & sgsUV,  sgsUW,  sgsVW,                  &
-       & sgsUTH, sgsVTH, sgsWTH,                 &
+       & sgsUU,  sgsVV,  sgsWW,   &
+       & sgsUV,  sgsUW,  sgsVW,   &
+       & sgsUTH, sgsVTH, sgsWTH,  &
        & THtotaladvX, THtotaladvY, THtotaladvZ,  & 
        & sgsUTHtend, sgsVTHtend, sgsWTHtend) 
 
@@ -44,9 +44,9 @@ CONTAINS
     TYPE(grid_config_rec_type), INTENT(IN   ) :: config_flags
 
     REAL, DIMENSION(ims:ime, kms:kme, jms:jme) , INTENT(IN) ::  &
-         TH_PHY,                                 & ! dry theta at mass--levels
-         U_PHY, V_PHY,                           &
-         TKE,  W,                                & ! staggered velocities
+         TH_PHY, TH8W,                           & ! dry theta at mass- and w-levels
+         U_PHY, V_PHY, TKE,                      & ! dry theta, u/v unstaggered, 
+         U, V, W,                                & ! staggered velocities
          ZPM, ZPW,                               & 
          zx, zy, rdz, rdzw,                      & 
          xkmh, xkmv, xkhh, xkhv,                 &
@@ -75,12 +75,13 @@ CONTAINS
 
     ! local vars 
     ! some factors for destaggering of W
-    REAL, DIMENSION( ims:ime , kms:kme , jms:jme ) :: upperfac, lowerfac  
-    REAL :: tmpfac1, tmpfac2
+    REAL, DIMENSION( ims:ime , kms:kme , jms:jme ) :: upperfac, lowerfac
     ! gradients
     REAL, DIMENSION( ims:ime , kms:kme , jms:jme ) :: &
                dTHdX, dTHdY, dTHdZ, dUdX, dUdY, dUdZ, &
                dVdX,  dVdY,  dVdZ,  dWdX, dWdY, dWdZ
+
+    REAL :: tmpfac1, tmpfac2
     ! some local variables for surface fluxes
     REAL, DIMENSION( ims:ime, jms:jme ) :: cpm_sfc, rho_sfc
     REAL, PARAMETER :: cp = 1004.
@@ -98,13 +99,8 @@ CONTAINS
     DO j=jts,j_end
        DO k=kts,min(kte,kde-1)
           DO i=its,i_end
-             ! do calculation of weighting factors for destaggering of w-level data
-             tmpfac1 = ZPM(i,k,j)  -ZPW(i,k,j)
-             tmpfac2 = ZPW(i,k+1,j)-ZPM(i,k,j)
-             upperfac(i,k,j) = tmpfac1/(tmpfac1+tmpfac2)
-             lowerfac(i,k,j) = tmpfac2/(tmpfac1+tmpfac2)
-
-             WMASS(i,k,j)    = W(i,k+1,j)*upperfac(i,k,j) + W(i,k,j)*lowerfac(i,k,j)
+             ! do destaggering of w-level
+             WMASS(i,k,j)    = 0.5  * ( W(i,k+1,j)+W(i,k,j) )
           END DO
        END DO
     END DO
@@ -127,7 +123,8 @@ CONTAINS
                     ids, ide, jds, jde, kds, kde,          &
                     ims, ime, jms, jme, kms, kme,          &
                     its, ite, jts, jte, kts, kte )
-    CALL calc_dVARdZ(dTHdZ, config_flags, TH_PHY, ZPM, .false., &
+    ! dTHdZ should be on mass levels
+    CALL calc_dVARdZ(dTHdZ, config_flags, TH8W, ZPW, .true., &
                     dn, dnw, rdz, rdzw, fnm, &
                     fnp, cf1, cf2, cf3,           &
                     ids, ide, jds, jde, kds, kde,            &
@@ -198,7 +195,7 @@ CONTAINS
                     ids, ide, jds, jde, kds, kde,          &
                     ims, ime, jms, jme, kms, kme,          &
                     its, ite, jts, jte, kts, kte )
-    ! dWdZ is on mass levels
+    ! dWdZ should be on mass levels
     CALL calc_dVARdZ(dWdZ, config_flags, W, ZPW, .true.,       &
                      dn, dnw, rdz, rdzw, fnm, &
                      fnp, cf1, cf2, cf3,           &
@@ -206,58 +203,51 @@ CONTAINS
                      ims, ime, jms, jme, kms, kme,            &
                      its, ite, jts, jte, kts, kte )
 
-    ! extrapolate some gradients which do not have values on lowest level
-    dTHdZ(its:i_end,kts,jts:j_end) = dTHdZ(its:i_end,1,jts:j_end)*cf1 + &
-             dTHdZ(its:i_end,2,jts:j_end)*cf2 + dTHdZ(its:i_end,3,jts:j_end)*cf3 
-    dUdZ(its:i_end,kts,jts:j_end)  = dUdZ(its:i_end,1,jts:j_end)*cf1 + &
-             dUdZ(its:i_end,2,jts:j_end)*cf2  + dUdZ(its:i_end,3,jts:j_end)*cf3  
-    dVdZ(its:i_end,kts,jts:j_end)  = dVdZ(its:i_end,1,jts:j_end)*cf1 + &
-             dVdZ(its:i_end,2,jts:j_end)*cf2  + dVdZ(its:i_end,3,jts:j_end)*cf3
-
     DO j=jts,j_end
        DO k=kts,min(kte,kde)
           DO i=its,i_end  
              ! calculate the full advection term for dry theta at this time step
-             ! for the physical space; these are all be on mass-levels 
+             ! for the physical space 
+             ! these are all be on mass-levels 
              THtotaladvX(i,k,j) = -1.0 * U_PHY(i,k,j) * dTHdX(i,k,j)
              THtotaladvY(i,k,j) = -1.0 * V_PHY(i,k,j) * dTHdY(i,k,j)
              ! vertical theta gradients is on w-levels, so destagger that to get 
              ! to mass levels and use W on mass levels too
-             THtotaladvZ(i,k,j) = -0.5 * ( (W(i,k,j)  * dTHdZ(i,k,j)) + &
-                                           (W(i,k+1,j)* dTHdZ(i,k+1,j)) )
+             THtotaladvZ(i,k,j) = -1.0 * WMASS(i,k,j) * dTHdZ(i,k,j)
 
-             ! instantaneous SGS variances following Deardorff (1980)
+             ! do the first instantaneous SGS fluxes
              sgsUU(i,k,j) = -xkmh(i,k,j) * 2.0 * dUdX(i,k,j) + (TKE(i,k,j)*(2.0/3.0)) ! on mass-levels
              sgsVV(i,k,j) = -xkmh(i,k,j) * 2.0 * dVdY(i,k,j) + (TKE(i,k,j)*(2.0/3.0)) ! on mass-levels
              sgsWW(i,k,j) = -xkmv(i,k,j) * 2.0 * dWdZ(i,k,j) + (TKE(i,k,j)*(2.0/3.0)) ! on mass-levels
 
-             ! instantaneous SGS horizontal momentum flux following Deardorff (1980)
+             ! horizontal SGS heat fluxes
+             sgsUTH(i,k,j) = -xkhh(i,k,j) * dTHdX(i,k,j) ! on mass-levels 
+             sgsVTH(i,k,j) = -xkhh(i,k,j) * dTHdY(i,k,j) ! on mass-levels
+             ! horizontal SGS momentum fluxes
              sgsUV(i,k,j) = -xkmh(i,k,j) * ( dUdY(i,k,j) + dVdX(i,k,j) ) ! on mass-levels
-
              IF (k .EQ. 1) THEN 
-               ! calculate a moist c_p 
+               ! paramtertized sfc fluxes
                cpm_sfc(i,j) = cp * ( 1. + 0.8*moist(i,kts,j,P_QV) )
-               rho_sfc(i,j) = rho(i,kts,j) ! get the air density at the surface
-               ! caclulate kinematic heat flux from surface sensible heat flux
+               rho_sfc(i,j) = rho(i,kts,j)
                sfcWTH(i,j) = hfx(i,j)/( cpm_sfc(i,j)*rho_sfc(i,j))
-               ! calcualte kinematic miomemtum flux 
-               ! from ustar = (u'w'^2 + v'w'^2)^0.25
+               ! ustar = (u'w'^2 + v'w'^2)^0.25
                sfcUW(i,j) = ( (ustar(i,j)**4.0) /2.0)**0.5
              ELSE
-               ! eddy diffusivity and eddy viscocity from km_opt=2 are on mass-levels
-               ! but horizontal gradients of W and vertical gradient of U/V are w-levels 
-               ! so we interpolate excahnge coefficients to w-levels
-               sgsUW(i,k,j)  = -( 0.5*(xkmv(i,k,j) + xkmv(i,k-1,j)) ) * ( dUdZ(i,k,j) + dWdX(i,k,j) )
-               sgsVW(i,k,j)  = -( 0.5*(xkmv(i,k,j) + xkmv(i,k-1,j)) ) * ( dVdZ(i,k,j) + dWdY(i,k,j) )
+               ! excoefficients for 3D deardorff are on mass-levels, so  destagger them
+               ! SGS vertical heat flux should be on w-levels to incluse surace flux
+               sgsWTH(i,k,j) = -1.0 * xkhv(i,k,j) * dTHdZ(i,k,j) 
+               ! SGS vertical heat flux
+               sgsUW(i,k,j)  = -( 0.5*(xkmv(i,k,j) + xkmv(i,k-1,j)) ) * ( dUdZ(i,k,j) + dWdX(i,k,j) )  ! and mutiply with gradients on w-levels 
+               ! SGS vertical heat flux
+               sgsVW(i,k,j)  = -( 0.5*(xkmv(i,k,j) + xkmv(i,k-1,j)) ) * ( dVdZ(i,k,j) + dWdY(i,k,j) )  ! and mutiply with gradients on w-levels 
              END IF
            END DO
         END DO
      END DO
- 
-     ! now recalculate the SGS trubulent mixing, but seperately in each 
-     ! direction in the physical space when using km_opt=2
-     sgsUTHtend(its:ite,kts:kte,jts:jte) = 0. ! reset the instantaneous tendency
-     CALL horizontal_diffusion_sX(sgsUTHtend, config_flags, TH_PHY, sgsUTH, &
+     !  set first level withsurface fluxes
+
+     sgsUTHtend(its:ite,kts:kte,jts:jte) = 0.
+     CALL horizontal_diffusion_sX(sgsUTHtend, config_flags, TH_PHY,     &
                                  msftx, msfty, msfux, msfuy,            &
                                  msfvx, msfvy, xkhh, rdx, rdy,          &
                                  fnm, fnp, cf1, cf2, cf3,               &
@@ -265,8 +255,8 @@ CONTAINS
                                  ids, ide, jds, jde, kds, kde,          &
                                  ims, ime, jms, jme, kms, kme,          &
                                  its, ite, jts, jte, kts, kte)
-     sgsVTHtend(its:ite,kts:kte,jts:jte) = 0. ! reset the instantaneous tendency
-     CALL horizontal_diffusion_sY(sgsVTHtend, config_flags, TH_PHY, sgsVTH, &
+     sgsVTHtend(its:ite,kts:kte,jts:jte) = 0.
+     CALL horizontal_diffusion_sY(sgsVTHtend, config_flags, TH_PHY,     &
                                  msftx, msfty, msfux, msfuy,            &
                                  msfvx, msfvy, xkhh, rdx, rdy,          &
                                  fnm, fnp, cf1, cf2, cf3,               &
@@ -274,21 +264,20 @@ CONTAINS
                                  ids, ide, jds, jde, kds, kde,          &
                                  ims, ime, jms, jme, kms, kme,          &
                                  its, ite, jts, jte, kts, kte)
-     sgsWTHtend(its:ite,kts:kte,jts:jte) = 0. ! reset the instantaneous tendency
-     CALL vertical_diffusion_sZ(sgsWTHtend, config_flags, TH_PHY, sgsWTH,  &
+     sgsWTHtend(its:ite,kts:kte,jts:jte) = 0.
+     CALL vertical_diffusion_sZ(sgsWTHtend, config_flags, TH_PHY,       &
                                  xkhv, sfcWTH,                          &
                                  rdz, rdzw, fnm, fnp,                   &
                                  ids, ide, jds, jde, kds, kde,          &
                                  ims, ime, jms, jme, kms, kme,          &
                                  its, ite, jts, jte, kts, kte)
 
-     ! now set the surface fluxes to the staggered arrays of the vertical
-     ! momentum fluxes
-     ! surface heat flux is set in vertical_diffusion_sZ()
+     ! now set the surface fluxes to the stagger arraya
+     sgsWTH(its:i_end,kts,jts:j_end) = sfcWTH(its:i_end,jts:j_end)
      sgsUW(its:i_end,kts,jts:j_end)  = sfcUW(its:i_end,jts:j_end) 
      sgsVW(its:i_end,kts,jts:j_end)  = sfcUW(its:i_end,jts:j_end) 
 
-     ! reset uppermost level of diagnostics to zero (is neglected)
+     ! set last level of SGS fluxes to zero (can be neglected)
      sgsUU(its:i_end,kte,jts:j_end)  = 0.
      sgsVV(its:i_end,kte,jts:j_end)  = 0.
      sgsWW(its:i_end,kte,jts:j_end)  = 0.
@@ -298,10 +287,8 @@ CONTAINS
      sgsUTH(its:i_end,kte,jts:j_end) = 0.
      sgsVTH(its:i_end,kte,jts:j_end) = 0.
      sgsWTH(its:i_end,kte,jts:j_end) = 0.
-     THtotaladvX(its:i_end,kte,jts:j_end)  = 0.
-     THtotaladvY(its:i_end,kte,jts:j_end)  = 0.
-     THtotaladvZ(its:i_end,kte,jts:j_end)  = 0.
-     
+
+
   end subroutine calc_sgs_and_adv
 
 
@@ -317,7 +304,7 @@ CONTAINS
        & zx, zy, rdz, rdzw,                      &
        & dn, dnw,                                &
        & cf1, cf2, cf3,                          & 
-       & THMEAN, UMEAN, VMEAN, WMEAN, ZPM,       &
+       & THMEAN, TH8WMEAN, UMEAN, VMEAN, WMEAN, ZPM, ZPW,    &
        & THmeanadvX, THmeanadvY, THmeanadvZ       )
 
     IMPLICIT NONE
@@ -329,8 +316,8 @@ CONTAINS
     TYPE(grid_config_rec_type), INTENT(IN   ) :: config_flags
 
     REAL, DIMENSION(ims:ime, kms:kme, jms:jme) , INTENT(IN) ::  &
-         THMEAN, UMEAN, VMEAN, WMEAN,            &
-         ZPM,                                    &
+         THMEAN, TH8WMEAN, UMEAN, VMEAN, WMEAN,            &
+         ZPM, ZPW,                                    &
          zx, zy, rdz, rdzw
 
     REAL, INTENT(IN) :: cf1, cf2, cf3, rdx, rdy
@@ -353,7 +340,7 @@ CONTAINS
     i_end = min(ite,ide-1)
     j_end = min(jte,jde-1)
 
-   ! now calculate teh mean part of the adv
+  ! now calculate teh mean part of the adv
    ! this will only be valid at the end of an averaging interval 
    ! ignore this for now, because we only output it at the end of the
    ! averageing interval (=history_interval)
@@ -376,17 +363,13 @@ CONTAINS
                     ids, ide, jds, jde, kds, kde,          &
                     ims, ime, jms, jme, kms, kme,          &
                     its, ite, jts, jte, kts, kte )
-   CALL calc_dVARdZ(dTHmeandZ, config_flags, THMEAN, ZPM, .false., &
+   CALL calc_dVARdZ(dTHmeandZ, config_flags, TH8WMEAN, ZPW, .true., &
                     dn, dnw, rdz, rdzw, fnm, &
                     fnp, cf1, cf2, cf3,           &
                     ids, ide, jds, jde, kds, kde,            &
                     ims, ime, jms, jme, kms, kme,            &
                     its, ite, jts, jte, kts, kte )
 
-   ! extrapolate to lowest w-level
-   dTHmeandZ(its:i_end,kts,jts:j_end) = dTHmeandZ(its:i_end,1,jts:j_end)*cf1 + &
-                                        dTHmeandZ(its:i_end,2,jts:j_end)*cf2 + &
-                                        dTHmeandZ(its:i_end,3,jts:j_end)*cf3
    ! this is calculated on every time step, but only yields valid results at the
    ! end of an averaging interval. at that time output is done, and variables
    ! are written out. otherwise nothing happens with these variables so this
@@ -397,39 +380,46 @@ CONTAINS
          THmeanadvX(i,k,j) = -1.0 * UMEAN(i,k,j) * dTHmeandX(i,k,j)
          THmeanadvY(i,k,j) = -1.0 * VMEAN(i,k,j) * dTHmeandY(i,k,j)
          ! WMEAN is on mass levels, so destagger dTHdZ gradient  
-         THmeanadvZ(i,k,j) = -1.0 * WMEAN(i,k,j) * &
-                             0.5*( dTHmeandZ(i,k+1,j)+dTHmeandZ(i,k,j) )
+         THmeanadvZ(i,k,j) = -1.0 * WMEAN(i,k,j) * dTHmeandZ(i,k,j)
        END DO
      END DO
   END DO
 
   end subroutine calc_meanadv
-  
+
+
 
   subroutine zero_avgflx(avgflx_rum,avgflx_rvm,avgflx_wwm, &
        & ids, ide, jds, jde, kds, kde,           &
        & ims, ime, jms, jme, kms, kme,           &
        & its, ite, jts, jte, kts, kte, do_cu,    &
        & avgflx_cfu1,avgflx_cfd1,avgflx_dfu1,avgflx_efu1,avgflx_dfd1,avgflx_efd1, & ! cLU start
-       & tke_tendm_adv,                      &  
-       & tke_tendm_hdiff, tke_tendm_vdiff,                 &
-       & ru_tendm_pgf, rv_tendm_pgf, rw_tendm_buoy,        & 
-       & ru_tendm_cor, rv_tendm_cor, rw_tendm_cor,         & 
-       & ru_tendm_curv, rv_tendm_curv, rw_tendm_curv,      & 
-       & rt_tendm_rad, rt_tendm_radlw, rt_tendm_radsw,     & 
-       & rt_tendm_mp,                                      & 
-       & tke_avg_shear, tke_avg_buoy, tke_avg_diss,        & 
-       & Umean,  Vmean,  Wmean, THmean,                    & 
-       & UVmean, UWmean, VWmean,                           & 
-       & UUmean, VVmean, WWmean,                           & 
-       & UTHmean, VTHmean, WTHmean,                        &
-       & xkmhMEAN, xkmvMEAN,                               &
-       & xkhhMEAN, xkhvMEAN,                               &
-       & sgsUUmean,  sgsVVmean,  sgsWWmean,                & 
-       & sgsUTHmean, sgsVTHmean, sgsWTHmean,               & 
-       & sgsUVmean,  sgsUWmean,  sgsVWmean,                &
-       & sfcUWmean,  sfcWTHmean, HFXmean,                  & 
-       & sgsUTHtendmean, sgsVTHtendmean, sgsWTHtendmean,   & 
+       & ru_tendmean, rv_tendmean, rw_tendmean,  &
+       & rt_tendmean, tke_tendmean, & ! total tend
+       & ru_tendfmean, rv_tendfmean, rw_tendfmean, rt_tendfmean, & ! total physics tend
+       & ru_tendm_adv, rv_tendm_adv, rw_tendm_adv, rt_tendm_adv, tke_tendm_adv,   & ! Advection tend
+       & rt_tendm_adv_x, rt_tendm_adv_y, rt_tendm_adv_z,  & ! theta adv in xyz
+       & ru_tendm_pgf, rv_tendm_pgf, rw_tendm_buoy,       & ! Pressure gradient and buoyancy
+       & ru_tendm_cor, rv_tendm_cor, rw_tendm_cor,        & ! coriolis force
+       & ru_tendm_curv, rv_tendm_curv, rw_tendm_curv,     & ! curvature effect
+       & ru_tendm_hdiff, rv_tendm_hdiff, rw_tendm_hdiff,  & ! hor. diff of wind
+       & rt_tendm_hdiff, tke_tendm_hdiff,                 & ! hor. diff of theta and tke
+       & ru_tendm_vdiff, rv_tendm_vdiff, rw_tendm_vdiff,  & ! vert. diff of wind
+       & rt_tendm_vdiff, tke_tendm_vdiff,                 & ! vert. diff of theta and tke
+       & rt_tendm_rad, rt_tendm_radlw, rt_tendm_radsw,    & ! Thetatend from physics
+       & rt_tendm_mp,                                     & ! Thetatend from MP (diabatic heating)
+       & tke_avg_shear, tke_avg_buoy, tke_avg_diss,       & ! TKE from deardorff
+       & Umean, Vmean, Wmean, THmean, TH8Wmean, THMmean, & 
+       & UVmean, UWmean, VWmean,                          & 
+       & UUmean, VVmean, WWmean,                          & 
+       & UTHmean, VTHmean, WTHmean,                       &
+       & xkmhMEAN, xkmvMEAN,                              &
+       & xkhhMEAN, xkhvMEAN,                              &
+       & sgsUUm,  sgsVVm,  sgsWWm,                & ! SGS variances and TKE
+       & sgsUTHm, sgsVTHm, sgsWTHm,                       & ! SGS heat fluxes
+       & sgsUVm,  sgsUWm,  sgsVWm,                        & ! SGS mom. fluxes
+       & sfcUWm,  sfcWTHm, HFXmean,                       & 
+       & sgsUTHtendm, sgsVTHtendm, sgsWTHtendm,           & 
        & meanTHtotaladvX, meanTHtotaladvY, meanTHtotaladvZ )  
     ! cLU end
     IMPLICIT NONE
@@ -441,28 +431,36 @@ CONTAINS
     LOGICAL, INTENT(IN) :: do_cu
 
     REAL,     DIMENSION( ims:ime , kms:kme , jms:jme ) , INTENT(INOUT) :: & ! cLU start
-         tke_tendm_adv,     & 
-         tke_tendm_hdiff, tke_tendm_vdiff, & 
-         ru_tendm_pgf,  rv_tendm_pgf,   rw_tendm_buoy,      &  
-         ru_tendm_cor,  rv_tendm_cor,   rw_tendm_cor,       &   
-         ru_tendm_curv, rv_tendm_curv,  rw_tendm_curv,      &
-         rt_tendm_rad,  rt_tendm_radlw, rt_tendm_radsw,     &
-         rt_tendm_mp,                                       & 
-         tke_avg_shear, tke_avg_buoy, tke_avg_diss,         &
-         Umean, Vmean, Wmean, THmean,                       &
-         UVmean, UWmean, VWmean,                            &
-         UUmean, VVmean, WWmean,                            &
-         UTHmean, VTHmean, WTHmean,                         &
-         xkmhMEAN, xkmvMEAN,                                &
-         xkhhMEAN, xkhvMEAN,                                &
-         sgsUUmean, sgsVVmean, sgsWWmean,                   &
-         sgsUTHmean, sgsVTHmean, sgsWTHmean,                & 
-         sgsUVmean,  sgsUWmean, sgsVWmean,                  &   
-         sgsUTHtendmean, sgsVTHtendmean, sgsWTHtendmean,    &
+         ru_tendmean, rv_tendmean, rw_tendmean,           &
+         rt_tendmean, tke_tendmean,                       & 
+         ru_tendfmean, rv_tendfmean, rw_tendfmean, rt_tendfmean,      & 
+         ru_tendm_adv, rv_tendm_adv, rw_tendm_adv, rt_tendm_adv, tke_tendm_adv, & 
+         rt_tendm_adv_x, rt_tendm_adv_y, rt_tendm_adv_z,  &
+         ru_tendm_pgf, rv_tendm_pgf, rw_tendm_buoy,       & 
+         ru_tendm_cor, rv_tendm_cor, rw_tendm_cor,        &  
+         ru_tendm_curv, rv_tendm_curv, rw_tendm_curv,     &
+         ru_tendm_hdiff, rv_tendm_hdiff, rw_tendm_hdiff,  &
+         rt_tendm_hdiff, tke_tendm_hdiff,                 &
+         ru_tendm_vdiff, rv_tendm_vdiff, rw_tendm_vdiff,  &
+         rt_tendm_vdiff, tke_tendm_vdiff,                 & 
+         rt_tendm_rad, rt_tendm_radlw, rt_tendm_radsw,    &
+         rt_tendm_mp,                                     & 
+         tke_avg_shear, tke_avg_buoy, tke_avg_diss,       &
+         Umean, Vmean, Wmean, THmean, TH8Wmean,           &
+         UVmean, UWmean, VWmean,                          &
+         UUmean, VVmean, WWmean,                          &
+         UTHmean, VTHmean, WTHmean,                       &
+         xkmhMEAN, xkmvMEAN,                              &
+         xkhhMEAN, xkhvMEAN,                              &
+         sgsUUm, sgsVVm, sgsWWm,                          &
+         sgsUTHm, sgsVTHm, sgsWTHm,                       & 
+         sgsUVm,  sgsUWm, sgsVWm,                         &   
+         sgsUTHtendm, sgsVTHtendm, sgsWTHtendm,           &
          meanTHtotaladvX, meanTHtotaladvY, meanTHtotaladvZ, &
-         avgflx_rum,avgflx_rvm,avgflx_wwm  
+         avgflx_rum,avgflx_rvm,avgflx_wwm  ! cLU end 
 
-    REAL,     DIMENSION( ims:ime , jms:jme ) , INTENT(INOUT) ::  sfcUWmean, sfcWTHmean, HFXmean
+    ! cLU start
+    REAL,     DIMENSION( ims:ime , jms:jme ) , INTENT(INOUT) ::  sfcUWm, sfcWTHm, HFXmean
     ! cLU end
 
     REAL,     OPTIONAL, DIMENSION( ims:ime , kms:kme , jms:jme ) , INTENT(INOUT) ::    &
@@ -475,45 +473,74 @@ CONTAINS
           DO i=its,ite
              ! cLU start 
              IF ( k .EQ. kts ) THEN
-                sfcUWmean(i,j)  = 0.
-                sfcWTHmean(i,j) = 0. 
+                sfcUWm(i,j)  = 0.
+                sfcWTHm(i,j) = 0. 
                 HFXmean(i,j) = 0.
              END IF
- 
-             ! TKE
+
+             ru_tendmean(i,k,j)   = 0.
+             rv_tendmean(i,k,j)   = 0.
+             rw_tendmean(i,k,j)   = 0.
+             rt_tendmean(i,k,j)   = 0.
+             tke_tendmean(i,k,j)   = 0.
+
+             ru_tendfmean(i,k,j)   = 0.
+             rv_tendfmean(i,k,j)   = 0.
+             rw_tendfmean(i,k,j)   = 0.
+             rt_tendfmean(i,k,j)   = 0.
+
+             ! advection tendency terms
+             ru_tendm_adv(i,k,j)   = 0.
+             rv_tendm_adv(i,k,j)   = 0.
+             rw_tendm_adv(i,k,j)   = 0.
+             rt_tendm_adv(i,k,j)   = 0.
              tke_tendm_adv(i,k,j)  = 0.
-             tke_tendm_hdiff(i,k,j) = 0.
-             tke_tendm_vdiff(i,k,j) = 0.
-                          
-             ! tendency from pressure and buoyany force 
+             rt_tendm_adv_x(i,k,j) = 0.
+             rt_tendm_adv_y(i,k,j) = 0.
+             rt_tendm_adv_z(i,k,j) = 0.
+
+             ! pressure and buoyany 
              ru_tendm_pgf(i,k,j)   = 0.
              rv_tendm_pgf(i,k,j)   = 0. 
              rw_tendm_buoy(i,k,j)  = 0.
-             ! tendency from coriolis force 
+             ! coriolis tendency 
              ru_tendm_cor(i,k,j)   = 0.
              rv_tendm_cor(i,k,j)   = 0.
              rw_tendm_cor(i,k,j)   = 0.
-             ! tendency from curvature effect 
+             ! curvature effect 
              ru_tendm_curv(i,k,j)  = 0.
              rv_tendm_curv(i,k,j)  = 0.
              rw_tendm_curv(i,k,j)  = 0. 
+             ! horizontal diffusion
+             ru_tendm_hdiff(i,k,j)  = 0.
+             rv_tendm_hdiff(i,k,j)  = 0.
+             rw_tendm_hdiff(i,k,j)  = 0. 
+             rt_tendm_hdiff(i,k,j)  = 0. 
+             tke_tendm_hdiff(i,k,j) = 0.
 
-             ! pot. temperature change from radiation and micro physics
+             ! vertical diffusion (only non-zero if bl_pbl_physics==0)
+             ru_tendm_vdiff(i,k,j)  = 0.
+             rv_tendm_vdiff(i,k,j)  = 0.
+             rw_tendm_vdiff(i,k,j)  = 0. 
+             rt_tendm_vdiff(i,k,j)  = 0.
+             tke_tendm_vdiff(i,k,j) = 0.
+
              rt_tendm_rad(i,k,j)   = 0. 
              rt_tendm_radlw(i,k,j) = 0. 
              rt_tendm_radsw(i,k,j) = 0.
              rt_tendm_mp(i,k,j)    = 0.
 
-             ! TKE production and dissipationfrom deardorff (km_opt = 2)
+             ! TKE from deardroff 
              tke_avg_shear(i,k,j) = 0.
              tke_avg_buoy(i,k,j)  = 0.
              tke_avg_diss(i,k,j)  = 0.
 
-             ! average values U,V,W, dry potential temperature and individual products
              Umean(i,k,j)  = 0.
              Vmean(i,k,j)  = 0.
              Wmean(i,k,j)  = 0.
+
              THmean(i,k,j) = 0.
+             TH8Wmean(i,k,j) = 0.
 
              UVmean(i,k,j) = 0. 
              UWmean(i,k,j) = 0.
@@ -530,27 +557,26 @@ CONTAINS
              xkhhMEAN(i,k,j)=0.
              xkhvMEAN(i,k,j)=0.
  
-             ! SGS (co-)variances
-             sgsUUmean(i,k,j)  = 0. 
-             sgsVVmean(i,k,j)  = 0. 
-             sgsWWmean(i,k,j)  = 0.
-             sgsUTHmean(i,k,j) = 0.
-             sgsVTHmean(i,k,j) = 0.
-             sgsWTHmean(i,k,j) = 0.
-             sgsUVmean(i,k,j)  = 0. 
-             sgsUWmean(i,k,j)  = 0. 
-             sgsVWmean(i,k,j)  = 0.   
+             ! SGS turbulence
+             sgsUUm(i,k,j) = 0. 
+             sgsVVm(i,k,j) = 0. 
+             sgsWWm(i,k,j) = 0.
+             sgsUTHm(i,k,j) = 0.
+             sgsVTHm(i,k,j) = 0.
+             sgsWTHm(i,k,j) = 0.
+             sgsUVm(i,k,j) = 0. 
+             sgsUWm(i,k,j) = 0. 
+             sgsVWm(i,k,j) = 0.   
 
-             ! sgs tendencies from Deardorff (km_op=2)
-             sgsUTHtendmean(i,k,j) = 0.
-             sgsVTHtendmean(i,k,j) = 0.
-             sgsWTHtendmean(i,k,j) = 0.
+             ! sgs tendencies 
+             sgsUTHtendm(i,k,j) = 0.
+             sgsVTHtendm(i,k,j) = 0.
+             sgsWTHtendm(i,k,j) = 0.
 
-             ! averaged total advection of dry pot. temperature 
-             ! in physical space
              meanTHtotaladvX(i,k,j) = 0.
              meanTHtotaladvY(i,k,j) = 0.
              meanTHtotaladvZ(i,k,j) = 0.  
+
              ! cLU end
 
              avgflx_rum(i,k,j) = 0.
@@ -590,34 +616,51 @@ CONTAINS
        & config_flags,           & 
        & muu, muv, mut,          & ! dry air masses for uncoupling
        & c1, c2, c1f, c2f,       & ! facotrs of vert.coordinate for uncouplint (mass and w-levels)
-       & tke_tendm_adv, & ! Mean advection tend
-       & tke_tendm_hdiff, tke_tendm_vdiff, &
-       & ru_tendm_pgf,  rv_tendm_pgf,   rw_tendm_buoy,   & ! pressure and buoyancy
-       & ru_tendm_cor,  rv_tendm_cor,   rw_tendm_cor,    & ! coriolis tendency
-       & ru_tendm_curv, rv_tendm_curv,  rw_tendm_curv,   & ! curvature effect
-       & rt_tendm_rad,  rt_tendm_radlw, rt_tendm_radsw,  & ! Thetatend from physics
+       & ru_tendmean,  rv_tendmean,  rw_tendmean, &
+       & rt_tendmean,  tke_tendmean,              & ! total tend
+       & ru_tendfmean, rv_tendfmean, rw_tendfmean, rt_tendfmean, & ! total physics tend
+       & ru_tendm_adv, rv_tendm_adv, rw_tendm_adv, rt_tendm_adv, tke_tendm_adv, & ! Mean advection tend
+       & rt_tendm_adv_x, rt_tendm_adv_y, rt_tendm_adv_z,  & ! theta adv in xyz
+       & ru_tendm_pgf, rv_tendm_pgf, rw_tendm_buoy,      & ! pressure and buoyancy
+       & ru_tendm_cor, rv_tendm_cor, rw_tendm_cor,       & ! corioils tendency
+       & ru_tendm_curv, rv_tendm_curv, rw_tendm_curv,    & ! curvature effect
+       & ru_tendm_hdiff, rv_tendm_hdiff, rw_tendm_hdiff, & ! hor. diff of wind
+       & rt_tendm_hdiff, tke_tendm_hdiff,                & ! hor. diff of theta and TKE
+       & ru_tendm_vdiff, rv_tendm_vdiff, rw_tendm_vdiff, & ! vert. diff of wind
+       & rt_tendm_vdiff, tke_tendm_vdiff,                & ! vert. diff of theta and tke
+       & rt_tendm_rad, rt_tendm_radlw, rt_tendm_radsw,   & ! Thetatend from physics
        & rt_tendm_mp,                                    & ! Thetatend from MP
        & tke_avg_shear, tke_avg_buoy, tke_avg_diss,      & ! TKE prod./diss. from deardroff
-       & Umean,    Vmean,   Wmean,   THmean,                    &
-       & UVmean,   UWmean,  VWmean,                         &
-       & UUmean,   VVmean,  WWmean,                         &
-       & UTHmean,  VTHmean, WTHmean,                      &
+       & Umean, Vmean, Wmean, THmean, TH8Wmean,          &
+       & UVmean, UWmean, VWmean,                         &
+       & UUmean, VVmean, WWmean,                         &
+       & UTHmean, VTHmean, WTHmean,                      &
        & xkmhMEAN, xkmvMEAN,                             &
        & xkhhMEAN, xkhvMEAN,                             &
-       & sgsUUmean,  sgsVVmean,  sgsWWmean,               & ! SGS variances and TKE
-       & sgsUTHmean, sgsVTHmean, sgsWTHmean,                      & ! SGS heat fluxes
-       & sgsUVmean,  sgsUWmean,  sgsVWmean,                       & ! SGS mom. fluxes
-       & sfcUWmean,  sfcWTHmean, HFXmean,                      & ! SFC fluxes
-       & sgsUTHtendmean, sgsVTHtendmean, sgsWTHtendmean,          &
-       & tke_tend_adv,                         & ! now instantaneous values: ADV
-       & tke_tend_hdiff, tke_tend_vdiff,                 &
+       & sgsUUm,  sgsVVm,  sgsWWm,               & ! SGS variances and TKE
+       & sgsUTHm, sgsVTHm, sgsWTHm,                      & ! SGS heat fluxes
+       & sgsUVm,  sgsUWm,  sgsVWm,                       & ! SGS mom. fluxes
+       & sfcUWm,  sfcWTHm, HFXmean,                      & ! SFC fluxes
+       & sgsUTHtendm, sgsVTHtendm, sgsWTHtendm,          &
+       & ru_tend,  rv_tend,  rw_tend,  rt_tend,  tke_tend, & ! now mean values
+       & ru_tendf, rv_tendf, rw_tendf, rt_tendf, & 
+       & ru_tend_adv, rv_tend_adv, rw_tend_adv, rt_tend_adv, tke_tend_adv, & ! now instantaneous values: ADV
+       & rt_tend_adv_x, rt_tend_adv_y, rt_tend_adv_z,    & ! theta adv in xyz
        & ru_tend_pgf, rv_tend_pgf, rw_tend_buoy,         & ! pressure and buoyancy
        & ru_tend_cor, rv_tend_cor, rw_tend_cor,          & ! corioils tendency
        & ru_tend_curv, rv_tend_curv, rw_tend_curv,       & ! curvature effect
+       & ru_tend_hdiff, rv_tend_hdiff, rw_tend_hdiff,    & ! hor. diff of wind
+       & rt_tend_hdiff, tke_tend_hdiff,                  & ! hor. diff of theta and TKE
+       & ru_tend_vdiff, rv_tend_vdiff, rw_tend_vdiff,    & ! vert. diff of wind
+       & rt_tend_vdiff, tke_tend_vdiff,                  & ! vert. diff of theta and TKE
        & rt_tend_rad, rt_tend_radlw, rt_tend_radsw,      & ! Thetatend from physics
        & rt_tend_mp,                                     & ! Thetatend from MP (diabatic heating)
        & tke_shear, tke_buoy, tke_diss,                  & ! TKE prod./diss. from deardroff
-       & U, V, W, WMASS, THETA,        & !
+       & ru_tend_res, rv_tend_res,              & ! residuals 
+       & rw_tend_res, rt_tend_res,              & ! residuals
+       & ru_tendm_res, rv_tendm_res,              & ! residuals 
+       & rw_tendm_res, rt_tendm_res,              & ! residuals
+       & U, V, W, WMASS, THETA, th8w,           & !
        & Ustag, Vstag,                          &
        & ZPM, ZPW,                              &
        & xkmh, xkmv, xkhh, xkhv,  &
@@ -646,16 +689,23 @@ CONTAINS
 
     INTEGER , INTENT(IN)        :: avgflx_count
     LOGICAL, INTENT(IN) :: do_cu
-    REAL, DIMENSION(ims:ime, kms:kme, jms:jme) , INTENT(IN) ::  &
-         ru_m, rv_m, ww_m,                                      & ! cLU start
-         tke_tend_adv,                                &
-         tke_tend_hdiff, tke_tend_vdiff,                        &
-         ru_tend_pgf,  rv_tend_pgf,  rw_tend_buoy,              &
-         ru_tend_cor,  rv_tend_cor,  rw_tend_cor,               &
+    REAL, DIMENSION(ims:ime, kms:kme, jms:jme) , INTENT(IN) :: &
+         ru_m, rv_m, ww_m, & ! cLU start
+         ru_tend,  rv_tend,  rw_tend,  rt_tend, tke_tend,       &
+         ru_tendf, rv_tendf, rw_tendf, rt_tendf,    &
+         ru_tend_adv, rv_tend_adv, rw_tend_adv, rt_tend_adv,    &
+         tke_tend_adv,                                          &
+         rt_tend_adv_x, rt_tend_adv_y, rt_tend_adv_z,           &
+         ru_tend_pgf, rv_tend_pgf, rw_tend_buoy,                &
+         ru_tend_cor, rv_tend_cor, rw_tend_cor,                 &
          ru_tend_curv, rv_tend_curv, rw_tend_curv,              &
+         ru_tend_hdiff, rv_tend_hdiff, rw_tend_hdiff,           &
+         rt_tend_hdiff, tke_tend_hdiff,                         & 
+         ru_tend_vdiff, rv_tend_vdiff, rw_tend_vdiff,           &
+         rt_tend_vdiff, tke_tend_vdiff,                         &
          rt_tend_rad, rt_tend_radlw, rt_tend_radsw, rt_tend_mp, &      
          tke_shear, tke_buoy, tke_diss,                         &
-         U, V, W, WMASS, THETA,                                 &
+         U, V, W, WMASS, THETA, TH8W,                           &
          Ustag, Vstag,                    &  
          ZPM, ZPW,                        &
          xkmh, xkmv, xkhh, xkhv,  &
@@ -665,6 +715,7 @@ CONTAINS
          zx, zy, rdz, rdzw,       &
          sgsUTHtend, sgsVTHtend, sgsWTHtend, &
          THtotaladvX, THtotaladvY, THtotaladvZ
+
 
     REAL , INTENT(IN) ::  cf1, cf2, cf3, rdx, rdy
 
@@ -680,29 +731,39 @@ CONTAINS
     REAL, DIMENSION( kms:kme ) , INTENT(IN) :: c1, c2, c1f, c2f ! uncoupling factors on mass levels and full levels
 
     REAL,     DIMENSION( ims:ime , kms:kme , jms:jme ) , INTENT(INOUT) ::    &
-         avgflx_rum,avgflx_rvm,avgflx_wwm,                           & ! cLU start
-         tke_tendm_adv,                                &
-         tke_tendm_hdiff, tke_tendm_vdiff,                           &
-         ru_tendm_pgf,  rv_tendm_pgf,   rw_tendm_buoy,               &
-         ru_tendm_cor,  rv_tendm_cor,   rw_tendm_cor,                &
-         ru_tendm_curv, rv_tendm_curv,  rw_tendm_curv,               &
-         rt_tendm_rad,  rt_tendm_radlw, rt_tendm_radsw, rt_tendm_mp, &  
-         tke_avg_shear, tke_avg_buoy, tke_avg_diss,                  & 
-         Umean, Vmean, Wmean, THmean,                     &
+         avgflx_rum,avgflx_rvm,avgflx_wwm,                          & ! cLU start
+         ru_tendmean,  rv_tendmean,  rw_tendmean, & 
+         rt_tendmean, tke_tendmean,      &
+         ru_tendfmean, rv_tendfmean, rw_tendfmean, rt_tendfmean,    &
+         ru_tendm_adv, rv_tendm_adv, rw_tendm_adv, rt_tendm_adv,    & 
+         tke_tendm_adv,                                             &
+         rt_tendm_adv_x, rt_tendm_adv_y, rt_tendm_adv_z,            &
+         ru_tendm_pgf, rv_tendm_pgf, rw_tendm_buoy,                 &
+         ru_tendm_cor, rv_tendm_cor, rw_tendm_cor,                  &
+         ru_tendm_curv, rv_tendm_curv, rw_tendm_curv,               &
+         ru_tendm_hdiff, rv_tendm_hdiff, rw_tendm_hdiff,            &
+         rt_tendm_hdiff, tke_tendm_hdiff,                           &
+         ru_tendm_vdiff, rv_tendm_vdiff, rw_tendm_vdiff,            &
+         rt_tendm_vdiff, tke_tendm_vdiff,                           &
+         rt_tendm_rad, rt_tendm_radlw, rt_tendm_radsw, rt_tendm_mp, &  
+         tke_avg_shear, tke_avg_buoy, tke_avg_diss,                 & 
+         Umean, Vmean, Wmean, THmean, TH8Wmean,                     &
          UVmean, UWmean, VWmean,                          &
          UUmean, VVmean, WWmean,                          &
          UTHmean, VTHmean, WTHmean,                       &
          xkmhMEAN, xkmvMEAN,                              &
          xkhhMEAN, xkhvMEAN,                              &
-         sgsUUmean,  sgsVVmean,  sgsWWmean,                  &
-         sgsUTHmean, sgsVTHmean, sgsWTHmean,                       &
-         sgsUVmean,  sgsUWmean,  sgsVWmean,                  & 
-         sgsUTHtendmean, sgsVTHtendmean, sgsWTHtendmean,   &
-         meanTHtotaladvX, meanTHtotaladvY, meanTHtotaladvZ
+         sgsUUm, sgsVVm, sgsWWm,                  &
+         sgsUTHm, sgsVTHm, sgsWTHm,                       &
+         sgsUVm,  sgsUWm, sgsVWm,                  & 
+         sgsUTHtendm, sgsVTHtendm, sgsWTHtendm,   &
+         meanTHtotaladvX, meanTHtotaladvY, meanTHtotaladvZ 
 
-    REAL, DIMENSION( ims:ime , jms:jme ) , INTENT(INOUT) :: sfcUWmean, sfcWTHmean, HFXmean
+
+    REAL, DIMENSION( ims:ime , jms:jme ) , INTENT(INOUT) :: sfcUWm,  sfcWTHm, HFXmean
     
     REAL, PARAMETER :: cp = 1004.
+   
     ! cLU end
 
     REAL,     OPTIONAL, DIMENSION( ims:ime , kms:kme , jms:jme ) , INTENT(IN) ::    &
@@ -723,87 +784,123 @@ CONTAINS
              ! cLU start
              IF ( k .EQ. kts) THEN
                ! ustar = (u'w'^2 + v'w'^2)^0.25
-               HFXmean(i,j)    = (local_count*HFXmean(i,j)    + hfx(i,j) )   / (local_count+1.)
-               sfcWTHmean(i,j) = (local_count*sfcWTHmean(i,j) + sfcWTH(i,j)) / (local_count+1.)
-               sfcUWmean(i,j)  = (local_count*sfcUWmean(i,j)  + sfcUW(i,j) ) / (local_count+1.)
+               HFXmean(i,j) = (local_count*HFXmean(i,j) + hfx(i,j) )   / (local_count+1.)
+               sfcWTHm(i,j) = (local_count*sfcWTHm(i,j) + sfcWTH(i,j) )/ (local_count+1.)
+               sfcUWm(i,j)  = (local_count*sfcUWm(i,j)  + sfcUW(i,j) ) / (local_count+1.)
              END IF
+  
+             ! doint total coupled tendendy 
+             ru_tendmean(i,k,j) = (local_count*ru_tendmean(i,k,j) + (ru_tend(i,k,j)/(c1(k) *muu(i,j)+c2(k))  ) )/(local_count+1.)
+             rv_tendmean(i,k,j) = (local_count*rv_tendmean(i,k,j) + (rv_tend(i,k,j)/(c1(k) *muv(i,j)+c2(k))  ) )/(local_count+1.)
+             rw_tendmean(i,k,j) = (local_count*rw_tendmean(i,k,j) + (rw_tend(i,k,j)/(c1f(k)*mut(i,j)+c2f(k)) ) )/(local_count+1.)
+             rt_tendmean(i,k,j) = (local_count*rt_tendmean(i,k,j) + (rt_tend(i,k,j)/(c1(k) *mut(i,j)+c2(k))  ) )/(local_count+1.)
+             tke_tendmean(i,k,j)= (local_count*tke_tendmean(i,k,j)+ tke_tend(i,k,j) ) /(local_count+1.)
 
-             ! doing TKE
-             tke_tendm_adv(i,k,j)  = (local_count*tke_tendm_adv(i,k,j)  + (tke_tend_adv(i,k,j)  /(c1(k)*mut(i,j)+c2(k)) ) )/(local_count+1.)
-             tke_tendm_hdiff(i,k,j)= (local_count*tke_tendm_hdiff(i,k,j)+ (tke_tend_hdiff(i,k,j)/(c1(k)*mut(i,j)+c2(k)) ) )/(local_count+1.)
-             tke_tendm_vdiff(i,k,j)= (local_count*tke_tendm_vdiff(i,k,j)+ (tke_tend_vdiff(i,k,j)/(c1(k)*mut(i,j)+c2(k)) ) )/(local_count+1.)
+             ! doint total coupled physics tendencies
+             ru_tendfmean(i,k,j) = (local_count*ru_tendfmean(i,k,j) + (ru_tendf(i,k,j)/(c1(k) *muu(i,j)+c2(k))  ) )/(local_count+1.)
+             rv_tendfmean(i,k,j) = (local_count*rv_tendfmean(i,k,j) + (rv_tendf(i,k,j)/(c1(k) *muv(i,j)+c2(k))  ) )/(local_count+1.)
+             rw_tendfmean(i,k,j) = (local_count*rw_tendfmean(i,k,j) + (rw_tendf(i,k,j)/(c1f(k)*mut(i,j)+c2f(k)) ) )/(local_count+1.)
+             rt_tendfmean(i,k,j) = (local_count*rt_tendfmean(i,k,j) + (rt_tendf(i,k,j)/(c1(k) *mut(i,j)+c2(k))  ) )/(local_count+1.)
+
+             ! doing coupled advection tendency on model levels
+             ru_tendm_adv(i,k,j) = (local_count*ru_tendm_adv(i,k,j) + (ru_tend_adv(i,k,j)/(c1(k) *muu(i,j)+c2(k))  ) )/(local_count+1.)
+             rv_tendm_adv(i,k,j) = (local_count*rv_tendm_adv(i,k,j) + (rv_tend_adv(i,k,j)/(c1(k) *muv(i,j)+c2(k))  ) )/(local_count+1.)
+             rw_tendm_adv(i,k,j) = (local_count*rw_tendm_adv(i,k,j) + (rw_tend_adv(i,k,j)/(c1f(k)*mut(i,j)+c2f(k)) ) )/(local_count+1.)
+             rt_tendm_adv(i,k,j) = (local_count*rt_tendm_adv(i,k,j) + (rt_tend_adv(i,k,j)/(c1(k) *mut(i,j)+c2(k))  ) )/(local_count+1.)
+
+             ! doing coupled advection tendency on on model levels 
+             rt_tendm_adv_x(i,k,j) = (local_count*rt_tendm_adv_x(i,k,j) + (rt_tend_adv_x(i,k,j)/(c1(k) *mut(i,j)+c2(k)) ) )/(local_count+1.)
+             rt_tendm_adv_y(i,k,j) = (local_count*rt_tendm_adv_y(i,k,j) + (rt_tend_adv_y(i,k,j)/(c1(k) *mut(i,j)+c2(k)) ) )/(local_count+1.)
+             rt_tendm_adv_z(i,k,j) = (local_count*rt_tendm_adv_z(i,k,j) + (rt_tend_adv_z(i,k,j)/(c1(k) *mut(i,j)+c2(k)) ) )/(local_count+1.)
 
              ! doing pressure gradient and buoyancy
-             ru_tendm_pgf(i,k,j) = (local_count*ru_tendm_pgf(i,k,j) + (ru_tend_pgf(i,k,j)/(c1(k)  *muu(i,j)+c2(k) )  ) )/(local_count+1.)
-             rv_tendm_pgf(i,k,j) = (local_count*rv_tendm_pgf(i,k,j) + (rv_tend_pgf(i,k,j)/(c1(k)  *muv(i,j)+c2(k) )  ) )/(local_count+1.)
-             rw_tendm_buoy(i,k,j)= (local_count*rw_tendm_buoy(i,k,j)+ (rw_tend_buoy(i,k,j)/(c1f(k)*mut(i,j)+c2f(k))  ) )/(local_count+1.)
+             ru_tendm_pgf(i,k,j) = (local_count*ru_tendm_pgf(i,k,j) + (ru_tend_pgf(i,k,j)/(c1(k) *muu(i,j)+c2(k))  ) )/(local_count+1.)
+             rv_tendm_pgf(i,k,j) = (local_count*rv_tendm_pgf(i,k,j) + (rv_tend_pgf(i,k,j)/(c1(k) *muv(i,j)+c2(k))  ) )/(local_count+1.)
+             rw_tendm_buoy(i,k,j)= (local_count*rw_tendm_buoy(i,k,j)+ (rw_tend_buoy(i,k,j)/(c1f(k)*mut(i,j)+c2f(k))) )/(local_count+1.)
+
              ! doing coriolis force 
              ru_tendm_cor(i,k,j) = (local_count*ru_tendm_cor(i,k,j) + (ru_tend_cor(i,k,j)/(c1(k) *muu(i,j)+c2(k))  ) )/(local_count+1.)
              rv_tendm_cor(i,k,j) = (local_count*rv_tendm_cor(i,k,j) + (rv_tend_cor(i,k,j)/(c1(k) *muv(i,j)+c2(k))  ) )/(local_count+1.)
              rw_tendm_cor(i,k,j) = (local_count*rw_tendm_cor(i,k,j) + (rw_tend_cor(i,k,j)/(c1f(k)*mut(i,j)+c2f(k)) ) )/(local_count+1.)
+
              ! doing curvature effect
              ru_tendm_curv(i,k,j) = (local_count*ru_tendm_curv(i,k,j) + (ru_tend_curv(i,k,j)/(c1(k) *muu(i,j)+c2(k))  ) )/(local_count+1.)
              rv_tendm_curv(i,k,j) = (local_count*rv_tendm_curv(i,k,j) + (rv_tend_curv(i,k,j)/(c1(k) *muv(i,j)+c2(k))  ) )/(local_count+1.)
              rw_tendm_curv(i,k,j) = (local_count*rw_tendm_curv(i,k,j) + (rw_tend_curv(i,k,j)/(c1f(k)*mut(i,j)+c2f(k)) ) )/(local_count+1.)
+
+             ! doing horizontal diffusion
+             ru_tendm_hdiff(i,k,j) =  (local_count*ru_tendm_hdiff(i,k,j)  + (ru_tend_hdiff(i,k,j)/(c1(k) *muu(i,j)+c2(k))  ) )/(local_count+1.)
+             rv_tendm_hdiff(i,k,j) =  (local_count*rv_tendm_hdiff(i,k,j)  + (rv_tend_hdiff(i,k,j)/(c1(k) *muv(i,j)+c2(k))  ) )/(local_count+1.)
+             rw_tendm_hdiff(i,k,j) =  (local_count*rw_tendm_hdiff(i,k,j)  + (rw_tend_hdiff(i,k,j)/(c1f(k)*mut(i,j)+c2f(k)) ) )/(local_count+1.)
+             rt_tendm_hdiff(i,k,j) =  (local_count*rt_tendm_hdiff(i,k,j)  + (rt_tend_hdiff(i,k,j)/(c1(k) *mut(i,j)+c2(k))  ) )/(local_count+1.)
+
+             ! doing vertical diffusion (only non-zero if bl_pbl_physics == 0) 
+             ru_tendm_vdiff(i,k,j) =  (local_count*ru_tendm_vdiff(i,k,j)  + (ru_tend_vdiff(i,k,j)/(c1(k) *muu(i,j)+c2(k))  ) )/(local_count+1.)
+             rv_tendm_vdiff(i,k,j) =  (local_count*rv_tendm_vdiff(i,k,j)  + (rv_tend_vdiff(i,k,j)/(c1(k) *muv(i,j)+c2(k))  ) )/(local_count+1.)
+             rw_tendm_vdiff(i,k,j) =  (local_count*rw_tendm_vdiff(i,k,j)  + (rw_tend_vdiff(i,k,j)/(c1f(k)*mut(i,j)+c2f(k)) ) )/(local_count+1.)
+             rt_tendm_vdiff(i,k,j) =  (local_count*rt_tendm_vdiff(i,k,j)  + (rt_tend_vdiff(i,k,j)/(c1(k) *mut(i,j)+c2(k))  ) )/(local_count+1.)
+
+             ! doing TKE
+             tke_tendm_adv(i,k,j)  =  (local_count*tke_tendm_adv(i,k,j)   + (tke_tend_adv(i,k,j)  /(c1(k) *mut(i,j)+c2(k)) ) ) /(local_count+1.)
+             tke_tendm_hdiff(i,k,j)=  (local_count*tke_tendm_hdiff(i,k,j) + (tke_tend_hdiff(i,k,j)/(c1(k) *mut(i,j)+c2(k)) ) ) /(local_count+1.)
+             tke_tendm_vdiff(i,k,j)=  (local_count*tke_tendm_vdiff(i,k,j) + (tke_tend_vdiff(i,k,j)/(c1(k) *mut(i,j)+c2(k)) ) )/(local_count+1.)
 
              ! doing deardroff diss-/prod.
              tke_avg_shear(i,k,j) = (local_count*tke_avg_shear(i,k,j) + (tke_shear(i,k,j) /(c1(k) *mut(i,j)+c2(k)) ) )/(local_count+1.)
              tke_avg_buoy(i,k,j)  = (local_count*tke_avg_buoy(i,k,j)  + (tke_buoy(i,k,j)  /(c1(k) *mut(i,j)+c2(k)) ) )/(local_count+1.)
              tke_avg_diss(i,k,j)  = (local_count*tke_avg_diss(i,k,j)  + (tke_diss(i,k,j)  /(c1(k) *mut(i,j)+c2(k)) ) )/(local_count+1.)
 
-             ! averageing of uncoupled, unstaggered velocity components 
+             ! doing means to get (co)variances of resolved turbulence 
              UMEAN(i,k,j) = (local_count*UMEAN(i,k,j)  + U(i,k,j) )/(local_count+1.)
              VMEAN(i,k,j) = (local_count*VMEAN(i,k,j)  + V(i,k,j) )/(local_count+1.)
-             WMEAN(i,k,j) = (local_count*WMEAN(i,k,j)  + WMASS(i,k,j) )/(local_count+1.)
-             ! and dry potential temperature             
+             WMEAN(i,k,j) = (local_count*WMEAN(i,k,j) + WMASS(i,k,j) )/(local_count+1.)
+
              THMEAN(i,k,j) = (local_count*THMEAN(i,k,j) + THETA(i,k,j) )/(local_count+1.)
+             TH8WMEAN(i,k,j) = (local_count*TH8WMEAN(i,k,j) + TH8W(i,k,j))/(local_count+1.)
 
-            ! averageing of uncoupled, unstaggered products to derive resolved (co-)variances  
-             UVMEAN(i,k,j) = (local_count*UVMEAN(i,k,j) + ( U(i,k,j)*V(i,k,j)     ) )/(local_count+1.)
-             UWMEAN(i,k,j) = (local_count*UWMEAN(i,k,j) + ( U(i,k,j)*WMASS(i,k,j) ) )/(local_count+1.)
-             VWMEAN(i,k,j) = (local_count*VWMEAN(i,k,j) + ( V(i,k,j)*WMASS(i,k,j) ) )/(local_count+1.)
-             UUMEAN(i,k,j) = (local_count*UUMEAN(i,k,j) + ( U(i,k,j)**2           ) )/(local_count+1.)
-             VVMEAN(i,k,j) = (local_count*VVMEAN(i,k,j) + ( V(i,k,j)**2           ) )/(local_count+1.)
-             WWMEAN(i,k,j) = (local_count*WWMEAN(i,k,j) + ( WMASS(i,k,j)**2       ) )/(local_count+1.)
+             UVMEAN(i,k,j)  = (local_count*UVMEAN(i,k,j) + ( U(i,k,j)*V(i,k,j) ))/(local_count+1.)
+             UWMEAN(i,k,j)  = (local_count*UWMEAN(i,k,j) + ( U(i,k,j)*WMASS(i,k,j) ) )/(local_count+1.)
+             VWMEAN(i,k,j)  = (local_count*VWMEAN(i,k,j) + ( V(i,k,j)*WMASS(i,k,j) ) )/(local_count+1.)
+             UUMEAN(i,k,j)  = (local_count*UUMEAN(i,k,j) + ( U(i,k,j)**2 ) )/(local_count+1.)
+             VVMEAN(i,k,j)  = (local_count*VVMEAN(i,k,j) + ( V(i,k,j)**2 ) )/(local_count+1.)
+             WWMEAN(i,k,j) = (local_count*WWMEAN(i,k,j) + ( WMASS(i,k,j)**2 ) )/(local_count+1.)
 
-             UTHMEAN(i,k,j)  = (local_count*UTHMEAN(i,k,j) + ( U(i,k,j)*THETA(i,k,j)     ) )/(local_count+1.)
-             VTHMEAN(i,k,j)  = (local_count*VTHMEAN(i,k,j) + ( V(i,k,j)*THETA(i,k,j)     ) )/(local_count+1.)
+             UTHMEAN(i,k,j)  = (local_count*UTHMEAN(i,k,j) + ( U(i,k,j)*THETA(i,k,j) ) )/(local_count+1.)
+             VTHMEAN(i,k,j)  = (local_count*VTHMEAN(i,k,j) + ( V(i,k,j)*THETA(i,k,j) ) )/(local_count+1.)
              WTHMEAN(i,k,j)  = (local_count*WTHMEAN(i,k,j) + ( WMASS(i,k,j)*THETA(i,k,j) ) )/(local_count+1.)
 
-             ! averaging of SGS turbulence exxchange coefficients
              xkmhMEAN(i,k,j) = (local_count*xkmhMEAN(i,k,j) + xkmh(i,k,j) )/(local_count+1.)
-             xkmvMEAN(i,k,j) = (local_count*xkmvMEAN(i,k,j) + xkmv(i,k,j) )/(local_count+1.)
-             xkhhMEAN(i,k,j) = (local_count*xkhhMEAN(i,k,j) + xkhh(i,k,j) )/(local_count+1.)
-             xkhvMEAN(i,k,j) = (local_count*xkhvMEAN(i,k,j) + xkhv(i,k,j) )/(local_count+1.)
+             xkmvMEAN(i,k,j) = (local_count*xkmvMEAN(i,k,j) + xkmv(i,k,j))/(local_count+1.)
+             xkhhMEAN(i,k,j) = (local_count*xkhhMEAN(i,k,j) + xkhh(i,k,j))/(local_count+1.)
+             xkhvMEAN(i,k,j) = (local_count*xkhvMEAN(i,k,j) + xkhv(i,k,j))/(local_count+1.)
 
              ! doing SGS turbulence 
-             sgsUUmean(i,k,j)  = (local_count*sgsUUmean(i,k,j)  + ABS(sgsUU(i,k,j) )) / (local_count+1.)
-             sgsVVmean(i,k,j)  = (local_count*sgsVVmean(i,k,j)  + ABS(sgsVV(i,k,j) )) / (local_count+1.)
-             sgsWWmean(i,k,j)  = (local_count*sgsWWmean(i,k,j)  + ABS(sgsWW(i,k,j) )) / (local_count+1.)
-             sgsUTHmean(i,k,j) = (local_count*sgsUTHmean(i,k,j) + sgsUTH(i,k,j) ) / (local_count+1.)
-             sgsVTHmean(i,k,j) = (local_count*sgsVTHmean(i,k,j) + sgsVTH(i,k,j) ) / (local_count+1.)
-             sgsWTHmean(i,k,j) = (local_count*sgsWTHmean(i,k,j) + sgsWTH(i,k,j) ) / (local_count+1.)
-             sgsUVmean(i,k,j)  = (local_count*sgsUVmean(i,k,j)  + sgsUV(i,k,j) )  / (local_count+1.)
-             sgsUWmean(i,k,j)  = (local_count*sgsUWmean(i,k,j)  + sgsUW(i,k,j) )  / (local_count+1.)
-             sgsVWmean(i,k,j)  = (local_count*sgsVWmean(i,k,j)  + sgsVW(i,k,j) )  / (local_count+1.)
+             sgsUUm(i,k,j)  = (local_count*sgsUUm(i,k,j)  + ABS(sgsUU(i,k,j) ))  / (local_count+1.)
+             sgsVVm(i,k,j)  = (local_count*sgsVVm(i,k,j)  + ABS(sgsVV(i,k,j) ))  / (local_count+1.)
+             sgsWWm(i,k,j)  = (local_count*sgsWWm(i,k,j)  + ABS(sgsWW(i,k,j) ))  / (local_count+1.)
+             sgsUTHm(i,k,j) = (local_count*sgsUTHm(i,k,j) + sgsUTH(i,k,j) ) / (local_count+1.)
+             sgsVTHm(i,k,j) = (local_count*sgsVTHm(i,k,j) + sgsVTH(i,k,j) ) / (local_count+1.)
+             sgsWTHm(i,k,j) = (local_count*sgsWTHm(i,k,j) + sgsWTH(i,k,j) ) / (local_count+1.)
+             sgsUVm(i,k,j)  = (local_count*sgsUVm(i,k,j)  + sgsUV(i,k,j) )  / (local_count+1.)
+             sgsUWm(i,k,j)  = (local_count*sgsUWm(i,k,j)  + sgsUW(i,k,j) )  / (local_count+1.)
+             sgsVWm(i,k,j)  = (local_count*sgsVWm(i,k,j)  + sgsVW(i,k,j) )  / (local_count+1.)
        
-             ! average dry potential temperature tendencies from SGS turblent mixing
-             sgsUTHtendmean(i,k,j) = (local_count*sgsUTHtendmean(i,k,j) + sgsUTHtend(i,k,j) ) / (local_count+1.)
-             sgsVTHtendmean(i,k,j) = (local_count*sgsVTHtendmean(i,k,j) + sgsVTHtend(i,k,j) ) / (local_count+1.)
-             sgsWTHtendmean(i,k,j) = (local_count*sgsWTHtendmean(i,k,j) + sgsWTHtend(i,k,j) ) / (local_count+1.)
+             ! average SGS tendencies
+             sgsUTHtendm(i,k,j) = (local_count*sgsUTHtendm(i,k,j) + sgsUTHtend(i,k,j) ) / (local_count+1.)
+             sgsVTHtendm(i,k,j) = (local_count*sgsVTHtendm(i,k,j) + sgsVTHtend(i,k,j) ) / (local_count+1.)
+             sgsWTHtendm(i,k,j) = (local_count*sgsWTHtendm(i,k,j) + sgsWTHtend(i,k,j) ) / (local_count+1.)
  
-             ! average tendency coming from full dry potential temperature advection 
+             ! average total advective tendency 
              meanTHtotaladvX(i,k,j) = (local_count*meanTHtotaladvX(i,k,j) + THtotaladvX(i,k,j) ) / (local_count+1.)
              meanTHtotaladvY(i,k,j) = (local_count*meanTHtotaladvY(i,k,j) + THtotaladvY(i,k,j) ) / (local_count+1.)
              meanTHtotaladvZ(i,k,j) = (local_count*meanTHtotaladvZ(i,k,j) + THtotaladvZ(i,k,j) ) / (local_count+1.)
 
-             ! averaging uncoupled, unstaggered tendencies from phyiscs parameterizations
+             ! doing tendencies from phyiscs (uncopled!)
              rt_tendm_rad(i,k,j)   = (local_count*rt_tendm_rad(i,k,j)   + rt_tend_rad(i,k,j)   )/(local_count+1.)
              rt_tendm_radlw(i,k,j) = (local_count*rt_tendm_radlw(i,k,j) + rt_tend_radlw(i,k,j) )/(local_count+1.) 
              rt_tendm_radsw(i,k,j) = (local_count*rt_tendm_radsw(i,k,j) + rt_tend_radsw(i,k,j) )/(local_count+1.) 
              rt_tendm_mp(i,k,j)    = (local_count*rt_tendm_mp(i,k,j)    + rt_tend_mp(i,k,j)    )/(local_count+1.)
-             ! cLU end
-             
+
              avgflx_rum(i,k,j) = (local_count*avgflx_rum(i,k,j) + ru_m(i,k,j))/(local_count+1.)
              avgflx_rvm(i,k,j) = (local_count*avgflx_rvm(i,k,j) + rv_m(i,k,j))/(local_count+1.)
              avgflx_wwm(i,k,j) = (local_count*avgflx_wwm(i,k,j) + ww_m(i,k,j))/(local_count+1.)
@@ -1222,7 +1319,7 @@ CONTAINS
    END SUBROUTINE calc_dVARdZ 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-SUBROUTINE horizontal_diffusion_sX(tendency, config_flags, var, flx,      &
+SUBROUTINE horizontal_diffusion_sX(tendency, config_flags, var,       &
                                    msftx, msfty, msfux, msfuy,            &
                                    msfvx, msfvy, xkhh, rdx, rdy,          &
                                    fnm, fnp, cf1, cf2, cf3,               &
@@ -1257,7 +1354,7 @@ SUBROUTINE horizontal_diffusion_sX(tendency, config_flags, var, flx,      &
    REAL , DIMENSION( ims:ime, jms:jme) ,         INTENT(IN   ) ::   msfty
 
 
-   REAL , DIMENSION( ims:ime, kms:kme, jms:jme), INTENT(INOUT) :: tendency, flx
+   REAL , DIMENSION( ims:ime, kms:kme, jms:jme), INTENT(INOUT) :: tendency
 
    REAL , DIMENSION( ims:ime, kms:kme, jms:jme), INTENT(IN   ) ::         &
                                                                     xkhh, &
@@ -1399,8 +1496,6 @@ SUBROUTINE horizontal_diffusion_sX(tendency, config_flags, var, flx,      &
 
       mrdx=msftx(i,j)*rdx
       mrdy=msfty(i,j)*rdy
-      
-      flx(i,k,j) = H1(i,k,j)
 
       tendency(i,k,j)=                                           &
           -(mrdx*0.5*(H1(i+1,k,j)-H1(i  ,k,j))-                  &
@@ -1414,7 +1509,7 @@ END SUBROUTINE horizontal_diffusion_sX
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-SUBROUTINE horizontal_diffusion_sY(tendency, config_flags, var, flx,      &
+SUBROUTINE horizontal_diffusion_sY(tendency, config_flags, var,           &
                                    msftx, msfty, msfux, msfuy,            &
                                    msfvx, msfvy, xkhh, rdx, rdy,          &
                                    fnm, fnp, cf1, cf2, cf3,               &
@@ -1448,7 +1543,7 @@ SUBROUTINE horizontal_diffusion_sY(tendency, config_flags, var, flx,      &
    REAL , DIMENSION( ims:ime, jms:jme) ,         INTENT(IN   ) ::   msftx
    REAL , DIMENSION( ims:ime, jms:jme) ,         INTENT(IN   ) ::   msfty
 
-   REAL , DIMENSION( ims:ime, kms:kme, jms:jme), INTENT(INOUT) :: tendency, flx
+   REAL , DIMENSION( ims:ime, kms:kme, jms:jme), INTENT(INOUT) :: tendency
 
    REAL , DIMENSION( ims:ime, kms:kme, jms:jme), INTENT(IN   ) ::         &
                                                                     xkhh, &
@@ -1590,8 +1685,6 @@ SUBROUTINE horizontal_diffusion_sY(tendency, config_flags, var, flx,      &
       mrdx=msftx(i,j)*rdx
       mrdy=msfty(i,j)*rdy
 
-      flx(i,k,j) = H2(i,k,j)
-
       tendency(i,k,j)=                                      &
           -(mrdy*0.5*(H2(i,k,j+1)-H2(i,k,j  ))-             &
            msfty(i,j)*(H2avg(i,k+1,j)-H2avg(i,k,j))*rdzw(i,k,j))
@@ -1604,7 +1697,7 @@ END SUBROUTINE horizontal_diffusion_sY
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-SUBROUTINE vertical_diffusion_sZ( tendency, config_flags, var, flx, xkhv, sfcflux, &
+SUBROUTINE vertical_diffusion_sZ( tendency, config_flags, var, xkhv, sfcflux, &
                                  rdz, rdzw, fnm, fnp,                         &
                                  ids, ide, jds, jde, kds, kde,                &
                                  ims, ime, jms, jme, kms, kme,                &
@@ -1624,7 +1717,7 @@ SUBROUTINE vertical_diffusion_sZ( tendency, config_flags, var, flx, xkhv, sfcflu
    REAL , DIMENSION( kms:kme ) ,                 INTENT(IN   ) ::    fnm
    REAL , DIMENSION( kms:kme ) ,                 INTENT(IN   ) ::    fnp
 
-   REAL , DIMENSION( ims:ime, kms:kme, jms:jme), INTENT(INOUT) ::tendency, flx
+   REAL , DIMENSION( ims:ime, kms:kme, jms:jme), INTENT(INOUT) ::tendency
 
    REAL , DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(IN) ::   xkhv
 
@@ -1682,7 +1775,7 @@ SUBROUTINE vertical_diffusion_sZ( tendency, config_flags, var, flx, xkhv, sfcflu
 
    DO j = j_start, j_end
    DO i = i_start, i_end
-      H3(i,kts,j)=0.
+      H3(i,kts,j)=sfcflux(i,j)
       H3(i,ktf+1,j)=0.
    ENDDO
    ENDDO
@@ -1690,18 +1783,8 @@ SUBROUTINE vertical_diffusion_sZ( tendency, config_flags, var, flx, xkhv, sfcflu
    DO j = j_start, j_end
    DO k = kts,ktf
    DO i = i_start, i_end
-      flx(i,k,j) = H3(i,k,j)
-
       tendency(i,k,j)= -(H3(i,k+1,j)-H3(i,k,j))*rdzw(i,k,j)
    ENDDO
-   ENDDO
-   ENDDO
-
-   DO j = j_start, j_end
-   DO i = i_start, i_end
-      flx(i,kts,j) = sfcflux(i,j)
-
-      tendency(i,kts,j)= tendency(i,kts,j) + sfcflux(i,j)*rdzw(i,kts,j)
    ENDDO
    ENDDO
 

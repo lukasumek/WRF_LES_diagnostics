@@ -1246,27 +1246,36 @@ endif
               &   grid%i_start(ij), grid%i_end(ij), grid%j_start(ij), grid%j_end(ij), kts, kte, f_flux, &
               &   grid%avgflx_cfu1,grid%avgflx_cfd1,grid%avgflx_dfu1, &
               &   grid%avgflx_efu1,grid%avgflx_dfd1,grid%avgflx_efd1, & ! cLU start
-              &   grid%tke_tendm_adv,     & ! advection tend
-              &   grid%tke_tendm_hdiff, grid%tke_tendm_vdiff,  &
+              &   grid%ru_tendmean, grid%rv_tendmean, grid%rw_tendmean, & ! total physics tend
+              &   grid%rt_tendmean, grid%tke_tendmean,                       & ! total tend
+              &   grid%ru_tendfmean, grid%rv_tendfmean, grid%rw_tendfmean, grid%rt_tendfmean, & ! total physics tend
+              &   grid%ru_tendm_adv, grid%rv_tendm_adv, grid%rw_tendm_adv, & ! advection tend
+              &   grid%rt_tendm_adv, grid%tke_tendm_adv, & ! advection tend
+              &   grid%rt_tendm_adv_x, grid%rt_tendm_adv_y, grid%rt_tendm_adv_z, & ! adv in x/y/z
               &   grid%ru_tendm_pgf, grid%rv_tendm_pgf, grid%rw_tendm_buoy, & ! pressure gradient and buoyancy
               &   grid%ru_tendm_cor, grid%rv_tendm_cor, grid%rw_tendm_cor, & ! coriolis force
               &   grid%ru_tendm_curv, grid%rv_tendm_curv, grid%rw_tendm_curv, & ! curvature effect
-              &   grid%rt_tendm_rad, grid%rt_tendm_radlw, grid%rt_tendm_radsw, & ! Thetatend from physics
-              &   grid%rt_tendm_mp, & ! Thetatend from MP
+              &   grid%ru_tendm_hdiff, grid%rv_tendm_hdiff, grid%rw_tendm_hdiff, & ! hor. diff of wind
+              &   grid%rt_tendm_hdiff, grid%tke_tendm_hdiff, & ! hor. diff of (oist) theta and tke
+              &   grid%ru_tendm_vdiff, grid%rv_tendm_vdiff, grid%rw_tendm_vdiff, & ! vert. diff of wind
+              &   grid%rt_tendm_vdiff, grid%tke_tendm_vdiff, & ! vert. diff of (moist) theta and tke 
+              &   grid%rt_tendm_rad, grid%rt_tendm_radlw, grid%rt_tendm_radsw, & ! dry theta tend from physics
+              &   grid%rt_tendm_mp, & ! diabatic heating from MP
               &   grid%tke_avg_shear, grid%tke_avg_buoy, grid%tke_avg_diss,       & ! TKE from deardorf
-              &   grid%UMEAN,   grid%VMEAN,   grid%WMEAN, grid%THMEAN,        &
-              &   grid%UVMEAN,  grid%UWMEAN,  grid%VWMEAN,                    &
-              &   grid%UUMEAN,  grid%VVMEAN,  grid%WWMEAN,                    &
-              &   grid%UTHMEAN, grid%VTHMEAN, grid%WTHMEAN,                   &
-              &   grid%xkmhMEAN,grid%xkmvMEAN,                                &
-              &   grid%xkhhMEAN,grid%xkhvMEAN,                                &
-              &   grid%sgsUUmean,  grid%sgsVVmean,  grid%sgsWWmean,           &
-              &   grid%sgsUTHmean, grid%sgsVTHmean, grid%sgsWTHmean,          &
-              &   grid%sgsUVmean,  grid%sgsUWmean,  grid%sgsVWmean,           &
-              &   grid%sfcUWmean,  grid%sfcWTHmean, grid%HFXmean,             &
-              &   grid%sgsUTHtendmean, grid%sgsVTHtendmean, grid%sgsWTHtendmean, &
-              &   grid%meanTHtotaladvX, grid%meanTHtotaladvY,                 & 
-              &   grid%meanTHtotaladvZ ) ! cLU end
+              &   grid%UMEAN,   grid%VMEAN,   grid%WMEAN,                   &
+              &   grid%THMEAN,  grid%th8wmean,                              &
+              &   grid%UVMEAN,  grid%UWMEAN,  grid%VWMEAN,                  &
+              &   grid%UUMEAN,  grid%VVMEAN,  grid%WWMEAN,                  &
+              &   grid%UTHMEAN, grid%VTHMEAN, grid%WTHMEAN,                 &
+              &   grid%xkmhMEAN,grid%xkmvMEAN,                              &
+              &   grid%xkhhMEAN,grid%xkhvMEAN,                              &
+              &   grid%sgsUUm,  grid%sgsVVm,  grid%sgsWWm,                  &
+              &   grid%sgsUTHm, grid%sgsVTHm, grid%sgsWTHm,                 &
+              &   grid%sgsUVm,  grid%sgsUWm,  grid%sgsVWm,                  &
+              &   grid%sfcUWm,  grid%sfcWTHm, grid%HFXmean, & ! SFC fluxes d
+              &   grid%sgsUTHtendm, grid%sgsVTHtendm, grid%sgsWTHtendm,     &
+              &   grid%meanTHtotaladvX, grid%meanTHtotaladvY,               & 
+              &   grid%meanTHtotaladvZ )
 
          call wrf_debug(200,'In start_em, after zero_avgflx call')
       ENDDO
