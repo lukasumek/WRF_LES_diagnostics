@@ -11,7 +11,7 @@ var(U) = UUMEAN - UMEAN*UMEAN
 var(V) = VVMEAN - VMEAN*VMEAN
 var(W) = WWMEAN - WMEAN*WMEAN
 
-Cartesion componetns of the resolved part of turbulent mixing can be calculated in postprocessing by:
+Cartesion components of the resolved part of turbulent mixing can be calculated in postprocessing by:
 
 RESTRBx = meanTOTADVx - MADVx
 RESTRBy = meanTOTADVy - MADVy
