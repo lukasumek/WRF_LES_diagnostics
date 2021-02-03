@@ -1204,7 +1204,7 @@ SUBROUTINE rk_scalar_tend ( scs, sce, config_flags,          &
 
       ELSE
         ! cLU start
-        IF( doing_TKE == .true. ) THEN
+        IF( doing_TKE .eqv. .true. ) THEN
           tke_tend_old = advect_tend
         ENDIF
         ! cLU end
@@ -1221,7 +1221,7 @@ SUBROUTINE rk_scalar_tend ( scs, sce, config_flags,          &
                                  ims, ime, jms, jme, kms, kme,  &
                                  its, ite, jts, jte, kts, kte  )
         ! cLU start
-        IF( doing_TKE == .true. ) THEN
+        IF( doing_TKE .eqv. .true. ) THEN
            tke_tend_adv = advect_tend - tke_tend_old
         ENDIF
         ! cLU end

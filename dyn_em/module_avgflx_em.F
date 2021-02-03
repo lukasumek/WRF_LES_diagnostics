@@ -233,12 +233,12 @@ CONTAINS
                ! ustar = (u'w'^2 + v'w'^2)^0.25
                sfcUW(i,j) = ( (ustar(i,j)**4.0) /2.0)**0.5
              ELSE
-               ! excoefficients for 3D deardorff are on mass-levels, so  destagger them
-               ! SGS vertical heat flux should be on w-levels to incluse surace flux
+               ! excoefficients for 3D deardorff are on mass-levels, use with vertical pot. temp. gradient 
+               ! SGS vertical heat flux should be on w-levels to include surface flux
                sgsWTH(i,k,j) = -1.0 * xkhv(i,k,j) * dTHdZ(i,k,j) 
-               ! SGS vertical heat flux
+               ! SGS vertical momentum flux on 
                sgsUW(i,k,j)  = -( 0.5*(xkmv(i,k,j) + xkmv(i,k-1,j)) ) * ( dUdZ(i,k,j) + dWdX(i,k,j) )  ! and mutiply with gradients on w-levels 
-               ! SGS vertical heat flux
+               ! SGS vertical momentum flux
                sgsVW(i,k,j)  = -( 0.5*(xkmv(i,k,j) + xkmv(i,k-1,j)) ) * ( dVdZ(i,k,j) + dWdY(i,k,j) )  ! and mutiply with gradients on w-levels 
              END IF
            END DO
@@ -379,7 +379,6 @@ CONTAINS
        DO i=its,i_end
          THmeanadvX(i,k,j) = -1.0 * UMEAN(i,k,j) * dTHmeandX(i,k,j)
          THmeanadvY(i,k,j) = -1.0 * VMEAN(i,k,j) * dTHmeandY(i,k,j)
-         ! WMEAN is on mass levels, so destagger dTHdZ gradient  
          THmeanadvZ(i,k,j) = -1.0 * WMEAN(i,k,j) * dTHmeandZ(i,k,j)
        END DO
      END DO
@@ -409,7 +408,7 @@ CONTAINS
        & rt_tendm_rad, rt_tendm_radlw, rt_tendm_radsw,    & ! Thetatend from physics
        & rt_tendm_mp,                                     & ! Thetatend from MP (diabatic heating)
        & tke_avg_shear, tke_avg_buoy, tke_avg_diss,       & ! TKE from deardorff
-       & Umean, Vmean, Wmean, THmean, TH8Wmean, THMmean, & 
+       & Umean, Vmean, Wmean, THmean, TH8Wmean,           & 
        & UVmean, UWmean, VWmean,                          & 
        & UUmean, VVmean, WWmean,                          & 
        & UTHmean, VTHmean, WTHmean,                       &
@@ -656,10 +655,6 @@ CONTAINS
        & rt_tend_rad, rt_tend_radlw, rt_tend_radsw,      & ! Thetatend from physics
        & rt_tend_mp,                                     & ! Thetatend from MP (diabatic heating)
        & tke_shear, tke_buoy, tke_diss,                  & ! TKE prod./diss. from deardroff
-       & ru_tend_res, rv_tend_res,              & ! residuals 
-       & rw_tend_res, rt_tend_res,              & ! residuals
-       & ru_tendm_res, rv_tendm_res,              & ! residuals 
-       & rw_tendm_res, rt_tendm_res,              & ! residuals
        & U, V, W, WMASS, THETA, th8w,           & !
        & Ustag, Vstag,                          &
        & ZPM, ZPW,                              &

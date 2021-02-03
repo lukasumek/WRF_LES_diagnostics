@@ -4778,10 +4778,6 @@ BENCH_END(bc_2d_tim)
               &   grid%RTHRATEN, grid%RTHRATENLW, grid%RTHRATENSW, & ! Thetatend from physics
               &   grid%h_diabatic,                                 & ! MP tendency
               &   grid%tke_shear, grid%tke_buoy, grid%tke_diss,    & ! TKE from deardorff
-              &   grid%ru_tend_res, grid%rv_tend_res,              & ! residuals 
-              &   grid%rw_tend_res, grid%rt_tend_res,              & ! residuals
-              &   grid%ru_tendm_res, grid%rv_tendm_res,              & ! residuals 
-              &   grid%rw_tendm_res, grid%rt_tendm_res,              & ! residuals
               &   grid%u_phy, grid%v_phy, grid%w_2, grid%WMASS,    &
               &   th_phy, grid%th8w,                               &
               &   grid%u_1,   grid%v_1,                            &
